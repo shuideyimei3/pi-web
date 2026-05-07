@@ -45,6 +45,16 @@ export const listStyles = css`
   h2 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 8px; color: #8b949e; font-size: 12px; text-transform: uppercase; }
   button { border: 1px solid #30363d; border-radius: 8px; background: #161b22; color: #e6edf3; padding: 7px 9px; cursor: pointer; }
   section > button { display: block; width: 100%; text-align: left; margin: 6px 0; }
+  .subheading { margin-top: 14px; }
+  .session-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; margin: 6px 0; }
+  .session-row.selected .session-main { border-color: #58a6ff; background: #0d2847; }
+  .session-row.archived .session-main { color: #8b949e; }
+  .session-main { min-width: 0; text-align: left; }
+  .session-menu { position: relative; align-self: stretch; }
+  .session-menu-toggle { display: grid; place-items: center; height: 100%; min-width: 30px; padding: 0; color: #8b949e; }
+  .session-menu-panel { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; min-width: 120px; padding: 4px; border: 1px solid #30363d; border-radius: 8px; background: #161b22; box-shadow: 0 8px 24px #0008; }
+  .session-menu-panel button { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: #e6edf3; }
+  .session-menu-panel button:hover { background: #0d2847; }
   button.selected { border-color: #58a6ff; background: #0d2847; }
   button:disabled { opacity: .5; cursor: not-allowed; }
   small { display: block; color: #8b949e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

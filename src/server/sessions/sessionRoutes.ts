@@ -85,6 +85,24 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: PiSessionS
     return { stopped: true };
   });
 
+  app.post<{ Params: { sessionId: string } }>(`${prefix}/sessions/:sessionId/archive`, async (request, reply) => {
+    try {
+      await sessions.archive(request.params.sessionId);
+      return { archived: true };
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.post<{ Params: { sessionId: string } }>(`${prefix}/sessions/:sessionId/restore`, async (request, reply) => {
+    try {
+      await sessions.restore(request.params.sessionId);
+      return { restored: true };
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   app.get<{ Params: { sessionId: string } }>(`${prefix}/sessions/:sessionId/events`, { websocket: true }, (socket, request) => {
     eventHub.add(request.params.sessionId, socket);
   });

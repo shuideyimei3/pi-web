@@ -13,6 +13,7 @@ import type { ClientCommand, ClientCommandResult, ClientMessagePage, ClientSessi
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import { BUILTIN_COMMANDS } from "./builtinCommands.js";
 import { SessionCommandService } from "./sessionCommandService.js";
+import { SessionArchiveStore } from "./sessionArchiveStore.js";
 import type { ActiveSession } from "./sessionRuntimeStore.js";
 
 function noop(): void {
@@ -24,6 +25,7 @@ export class PiSessionService {
   private readonly activities = new Map<string, { phase: "active" | "idle" | "error"; label: string; detail?: string; at: string }>();
   private readonly heartbeat: NodeJS.Timeout;
   private readonly commandService: SessionCommandService;
+  private readonly archiveStore = new SessionArchiveStore();
   private readonly agentDir = getAgentDir();
   private readonly authStorage = AuthStorage.create();
   private readonly modelRegistry = ModelRegistry.create(this.authStorage);
@@ -46,17 +48,22 @@ export class PiSessionService {
   }
 
   async list(cwd: string): Promise<ClientSession[]> {
-    const sessions = await SessionManager.list(cwd);
-    return sessions.map((s) => ({
-      id: s.id,
-      path: s.path,
-      cwd: s.cwd,
-      ...(s.name === undefined ? {} : { name: s.name }),
-      created: s.created.toISOString(),
-      modified: s.modified.toISOString(),
-      messageCount: s.messageCount,
-      firstMessage: s.firstMessage,
-    }));
+    const [sessions, archivedRecords] = await Promise.all([SessionManager.list(cwd), this.archiveStore.list()]);
+    const archivedById = new Map(archivedRecords.filter((record) => record.cwd === cwd).map((record) => [record.sessionId, record]));
+    return sessions.map((s) => {
+      const archived = archivedById.get(s.id);
+      return {
+        id: s.id,
+        path: s.path,
+        cwd: s.cwd,
+        ...(s.name === undefined ? {} : { name: s.name }),
+        created: s.created.toISOString(),
+        modified: s.modified.toISOString(),
+        messageCount: s.messageCount,
+        firstMessage: s.firstMessage,
+        ...(archived === undefined ? {} : { archived: true, archivedAt: archived.archivedAt }),
+      };
+    });
   }
 
   async start(cwd: string): Promise<ClientSession> {
@@ -104,6 +111,7 @@ export class PiSessionService {
   }
 
   async prompt(sessionId: string, text: string, streamingBehavior?: "steer" | "followUp"): Promise<void> {
+    await this.assertWritable(sessionId);
     const session = await this.getOrOpen(sessionId);
     const behavior = session.isStreaming || session.isCompacting ? streamingBehavior ?? "followUp" : undefined;
     this.publishActivity(session, session.isCompacting ? "message queued during compaction" : behavior === "steer" ? "steering queued" : behavior === "followUp" ? "message queued" : "prompt accepted", "active");
@@ -115,6 +123,7 @@ export class PiSessionService {
   }
 
   async shell(sessionId: string, text: string): Promise<void> {
+    await this.assertWritable(sessionId);
     const active = await this.getActive(sessionId);
     const { session } = active.runtime;
     const isExcluded = text.startsWith("!!");
@@ -149,11 +158,24 @@ export class PiSessionService {
   }
 
   async runCommand(sessionId: string, text: string): Promise<ClientCommandResult> {
+    await this.assertWritable(sessionId);
     return this.commandService.run(sessionId, text);
   }
 
   async respondToCommand(sessionId: string, requestId: string, value: string): Promise<ClientCommandResult> {
+    await this.assertWritable(sessionId);
     return this.commandService.respond(sessionId, requestId, value);
+  }
+
+  async archive(sessionId: string): Promise<void> {
+    const session = await this.getOrOpen(sessionId);
+    if (session.isStreaming || session.isCompacting || session.isBashRunning || session.pendingMessageCount > 0) throw new Error("Stop current session activity before archiving");
+    await this.archiveStore.archive(sessionId, session.sessionManager.getCwd());
+    this.stop(sessionId);
+  }
+
+  async restore(sessionId: string): Promise<void> {
+    await this.archiveStore.restore(sessionId);
   }
 
   async abort(sessionId: string): Promise<void> {
@@ -168,6 +190,10 @@ export class PiSessionService {
     void active.runtime.session.abort().finally(() => active.runtime.dispose());
     this.active.delete(sessionId);
     this.activities.delete(sessionId);
+  }
+
+  private async assertWritable(sessionId: string): Promise<void> {
+    if (await this.archiveStore.isArchived(sessionId)) throw new Error("Archived sessions are read-only. Restore the session to continue.");
   }
 
   private async getOrOpen(sessionId: string): Promise<AgentSession> {

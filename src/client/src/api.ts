@@ -24,6 +24,8 @@ export interface SessionInfo {
   modified: string;
   messageCount: number;
   firstMessage: string;
+  archived?: boolean;
+  archivedAt?: string;
 }
 
 export interface SessionActivity {
@@ -77,7 +79,7 @@ export type CommandResult =
 
 async function request<T>(url: string, parse: (value: unknown) => T, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
-  headers.set("content-type", "application/json");
+  if (init?.body !== undefined) headers.set("content-type", "application/json");
   const response = await fetch(url, { ...init, headers });
   if (!response.ok) {
     const body: unknown = await response.json().catch((): unknown => ({}));
@@ -107,6 +109,8 @@ export const api = {
   runCommand: (sessionId: string, text: string) => request(`/api/sessions/${sessionId}/commands/run`, parseCommandResult, { method: "POST", body: JSON.stringify({ text }) }),
   respondToCommand: (sessionId: string, requestId: string, value: string) => request(`/api/sessions/${sessionId}/commands/respond`, parseCommandResult, { method: "POST", body: JSON.stringify({ requestId, value }) }),
   stop: (sessionId: string) => request(`/api/sessions/${sessionId}/stop`, parseStopped, { method: "POST" }),
+  archive: (sessionId: string) => request(`/api/sessions/${sessionId}/archive`, parseArchived, { method: "POST" }),
+  restore: (sessionId: string) => request(`/api/sessions/${sessionId}/restore`, parseRestored, { method: "POST" }),
 };
 
 export function sessionEvents(sessionId: string): WebSocket {
@@ -204,6 +208,7 @@ function parseWorkspace(value: unknown): Workspace {
 function parseSessionInfo(value: unknown): SessionInfo {
   const record = requireRecord(value);
   const name = optionalString(record, "name");
+  const archivedAt = optionalString(record, "archivedAt");
   return {
     id: requireString(record, "id"),
     path: requireString(record, "path"),
@@ -213,6 +218,8 @@ function parseSessionInfo(value: unknown): SessionInfo {
     modified: requireString(record, "modified"),
     messageCount: requireNumber(record, "messageCount"),
     firstMessage: requireString(record, "firstMessage"),
+    ...(record["archived"] === true ? { archived: true } : {}),
+    ...(archivedAt === undefined ? {} : { archivedAt }),
   };
 }
 
@@ -297,6 +304,18 @@ function parseStopped(value: unknown): { stopped: true } {
   const record = requireRecord(value);
   if (record["stopped"] !== true) throw new Error("Expected stopped response");
   return { stopped: true };
+}
+
+function parseArchived(value: unknown): { archived: true } {
+  const record = requireRecord(value);
+  if (record["archived"] !== true) throw new Error("Expected archived response");
+  return { archived: true };
+}
+
+function parseRestored(value: unknown): { restored: true } {
+  const record = requireRecord(value);
+  if (record["restored"] !== true) throw new Error("Expected restored response");
+  return { restored: true };
 }
 
 function optionalNumber(record: Record<string, unknown>, key: string): number | undefined {

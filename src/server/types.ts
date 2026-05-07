@@ -24,6 +24,8 @@ export interface ClientSession {
   modified: string;
   messageCount: number;
   firstMessage: string;
+  archived?: boolean;
+  archivedAt?: string;
 }
 
 export interface ClientMessagePage {

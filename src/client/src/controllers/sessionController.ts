@@ -46,6 +46,13 @@ export class SessionController {
   async selectSession(session: SessionInfo, options?: { updateUrl?: boolean | undefined }) {
     this.socket.close();
     try {
+      if (session.archived === true) {
+        const page = await api.messages(session.id, { limit: MESSAGE_PAGE_SIZE });
+        const history = this.mergeAndCacheHistory(session.id, page);
+        this.setState({ selectedSession: session, messages: normalizeMessages(history.messages), messagePageStart: history.start, messagePageTotal: history.total, isLoadingEarlierMessages: false, status: undefined, activity: undefined });
+        if (options?.updateUrl !== false) this.updateUrl();
+        return;
+      }
       const buffered: SessionUiEvent[] = [];
       this.socket.connect(session.id, (event) => buffered.push(event));
       const [page, status] = await Promise.all([api.messages(session.id, { limit: MESSAGE_PAGE_SIZE }), api.status(session.id)]);
@@ -86,7 +93,7 @@ export class SessionController {
     if (trimmed.startsWith("/")) return this.runCommand(text);
     if (isShellInput(text)) return this.runShell(text);
     const session = this.getState().selectedSession;
-    if (!session) return;
+    if (!session || session.archived === true) return;
     this.setState({ messages: [...this.getState().messages, textMessage("user", text)] });
     try {
       await api.prompt(session.id, text, streamingBehavior);
@@ -97,7 +104,7 @@ export class SessionController {
 
   async runShell(text: string) {
     const session = this.getState().selectedSession;
-    if (!session) return;
+    if (!session || session.archived === true) return;
     this.setState({ messages: [...this.getState().messages, textMessage("user", text)] });
     try {
       await api.shell(session.id, text);
@@ -108,7 +115,7 @@ export class SessionController {
 
   async runCommand(text: string) {
     const session = this.getState().selectedSession;
-    if (!session) return;
+    if (!session || session.archived === true) return;
     this.setState({ messages: [...this.getState().messages, textMessage("user", text)] });
     try {
       this.applyCommandResult(await api.runCommand(session.id, text));
@@ -132,6 +139,34 @@ export class SessionController {
     this.setState({ commandDialog: undefined });
   }
 
+  async archiveSession(session = this.getState().selectedSession) {
+    if (!session) return;
+    try {
+      await api.archive(session.id);
+      this.replaceSession({ ...session, archived: true, archivedAt: new Date().toISOString() });
+      if (this.getState().selectedSession?.id === session.id) {
+        this.socket.close();
+        this.setState({ status: undefined, activity: undefined });
+      }
+    } catch (error) {
+      this.setState({ error: String(error) });
+    }
+  }
+
+  async restoreSession(session = this.getState().selectedSession) {
+    if (!session) return;
+    try {
+      await api.restore(session.id);
+      const restored = { ...session };
+      delete restored.archived;
+      delete restored.archivedAt;
+      this.replaceSession(restored);
+      if (this.getState().selectedSession?.id === restored.id) await this.selectSession(restored);
+    } catch (error) {
+      this.setState({ error: String(error) });
+    }
+  }
+
   async stopSession() {
     const session = this.getState().selectedSession;
     if (!session) return;
@@ -143,6 +178,14 @@ export class SessionController {
       this.clearActiveSession();
       this.updateUrl();
     }
+  }
+
+  private replaceSession(session: SessionInfo) {
+    const current = this.getState().selectedSession;
+    this.setState({
+      sessions: this.getState().sessions.map((candidate) => candidate.id === session.id ? session : candidate),
+      selectedSession: current?.id === session.id ? session : current,
+    });
   }
 
   private mergeAndCacheHistory(sessionId: string, page: RawMessagePage): RawMessagePage {
