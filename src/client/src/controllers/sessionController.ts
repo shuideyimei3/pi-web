@@ -1,7 +1,7 @@
 import { api, type CommandResult, type SessionActivity, type SessionInfo, type SessionStatus } from "../api";
-import { appendText, normalizeMessages, textMessage } from "../chatMessages";
-import type { ChatLine, ChatPart } from "../components/shared";
-import { isShellInput, appendShellChunk, finalizeShellMessage, shellStartMessage } from "../shellMessages";
+import { normalizeMessages, textMessage } from "../chatMessages";
+import { applyTranscriptEvent } from "../chatTranscript";
+import { isShellInput } from "../shellMessages";
 import { GlobalSessionSocket, SessionSocket, type SessionUiEvent } from "../sessionSocket";
 import type { GetState, SetState, UpdateUrl } from "./types";
 
@@ -150,34 +150,14 @@ export class SessionController {
   }
 
   private applyEvent(event: SessionUiEvent) {
-    const messages = this.getState().messages;
-    if (event.type === "assistant.delta") {
-      this.setState({ messages: appendText(messages, "assistant", event.text) });
-    } else if (event.type === "tool.start") {
-      this.setState({ messages: appendPart(messages, "assistant", { type: "toolCall", toolName: event.toolName, summary: event.summary }) });
-    } else if (event.type === "tool.end") {
-      this.setState({ messages: [...messages, { role: "tool", parts: [{ type: "toolResult", toolName: event.toolName, text: event.text, isError: event.isError }] }] });
-    } else if (event.type === "shell.start") {
-      this.setState({ messages: [...messages, shellStartMessage(event.command, event.excludeFromContext)] });
-    } else if (event.type === "shell.chunk") {
-      this.setState({ messages: appendShellChunk(messages, event.chunk) });
-    } else if (event.type === "shell.end") {
-      this.setState({ messages: finalizeShellMessage(messages, event) });
+    const transcript = applyTranscriptEvent(this.getState().messages, event);
+    if (transcript) {
+      this.setState({ messages: transcript });
     } else if (event.type === "status.update") {
       this.applyStatus(event.status);
     } else if (event.type === "activity.update") {
       this.applyActivity(event.activity);
-    } else if (event.type === "command.output") {
-      this.setState({ messages: [...messages, textMessage(event.level === "error" ? "system" : "tool", event.message)] });
-    } else if (event.type === "session.error") {
-      this.setState({ messages: [...messages, textMessage("system", event.message)] });
     }
   }
-}
-
-function appendPart(messages: ChatLine[], role: ChatLine["role"], part: ChatPart): ChatLine[] {
-  const last = messages.at(-1);
-  if (last?.role === role) return [...messages.slice(0, -1), { ...last, parts: [...last.parts, part] }];
-  return [...messages, { role, parts: [part] }];
 }
 
