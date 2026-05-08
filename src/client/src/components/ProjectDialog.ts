@@ -1,5 +1,5 @@
 import { LitElement, html } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion } from "../api";
 import { css } from "lit";
 
@@ -12,12 +12,17 @@ export class ProjectDialog extends LitElement {
   @state() private suggestions: FileSuggestion[] = [];
   @state() private selected = 0;
   @state() private loading = false;
+  @query("input") private pathInput?: HTMLInputElement;
 
   private requestId = 0;
 
   override connectedCallback(): void {
     super.connectedCallback();
     void this.loadSuggestions();
+  }
+
+  override firstUpdated(): void {
+    this.pathInput?.focus();
   }
 
   private async loadSuggestions() {
