@@ -7,6 +7,7 @@ import { ProjectStore } from "./storage/projectStore.js";
 import { ProjectService } from "./projects/projectService.js";
 import { WorkspaceService } from "./workspaces/workspaceService.js";
 import { listFileSuggestions, listPathSuggestions } from "./workspaces/fileSuggestions.js";
+import { listDirectorySuggestions } from "./projects/directorySuggestions.js";
 import { registerSessionProxyRoutes } from "./sessiond/sessionProxyRoutes.js";
 import { registerWorkspaceExplorerRoutes } from "./workspaceExplorerRoutes.js";
 import { registerGitRoutes } from "./gitRoutes.js";
@@ -19,9 +20,17 @@ const workspaces = new WorkspaceService();
 
 app.get("/api/projects", async () => projects.list());
 
-app.post<{ Body: { name?: string; path: string } }>("/api/projects", async (request, reply) => {
+app.post<{ Body: { name?: string; path: string; create?: boolean } }>("/api/projects", async (request, reply) => {
   try {
     return await projects.add(request.body);
+  } catch (error) {
+    return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get<{ Querystring: { q?: string } }>("/api/project-directories", async (request, reply) => {
+  try {
+    return await listDirectorySuggestions(request.query.q ?? "");
   } catch (error) {
     return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
   }

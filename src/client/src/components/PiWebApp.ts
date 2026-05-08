@@ -21,6 +21,7 @@ import type { PromptEditor } from "./PromptEditor";
 import "./StatusBar";
 import "./CommandPicker";
 import "./ActionPalette";
+import "./ProjectDialog";
 import "./WorkspacePanel";
 import { appStyles } from "./shared";
 
@@ -181,7 +182,7 @@ export class PiWebApp extends LitElement {
       state: this.state,
       openActionPalette: () => { this.setState({ actionPaletteOpen: true }); },
       focusPrompt: () => { this.promptEditor?.focusInput(); },
-      addProject: () => this.projects.addProject(),
+      addProject: () => { this.setState({ projectDialogOpen: true }); },
       selectMainView: (view) => { this.selectMainView(view); },
       refreshFiles: () => this.files.refreshFiles(),
       refreshGit: () => this.git.refreshGit(),
@@ -202,7 +203,7 @@ export class PiWebApp extends LitElement {
         <aside>
           <header>
             <strong>Pi Web POC</strong>
-            <button @click=${() => this.projects.addProject()}>+ Project</button>
+            <button @click=${() => { this.setState({ projectDialogOpen: true }); }}>+ Project</button>
           </header>
           <project-list .projects=${state.projects} .selected=${state.selectedProject} .onSelect=${(project: Project) => this.withChatScrollTransition(() => this.workspaces.selectProject(project))}></project-list>
           <workspace-list .workspaces=${state.workspaces} .selected=${state.selectedWorkspace} .onSelect=${(workspace: Workspace) => this.withChatScrollTransition(() => this.workspaces.selectWorkspace(workspace))}></workspace-list>
@@ -225,6 +226,7 @@ export class PiWebApp extends LitElement {
         </main>
         ${this.renderWorkspacePanel()}
         ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .onRun=${(actionId: string) => { this.setState({ actionPaletteOpen: false }); this.runAction(actionId); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
+        ${state.projectDialogOpen ? html`<project-dialog .onSubmit=${(path: string, create: boolean) => this.projects.addProject(path, create)} .onCancel=${() => { this.setState({ projectDialogOpen: false }); }}></project-dialog>` : null}
       </div>
     `;
   }

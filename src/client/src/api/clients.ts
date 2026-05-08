@@ -24,7 +24,8 @@ import { gitDiffUrl, messageUrl } from "./urls";
 
 export const projectsApi = {
   projects: () => request("/api/projects", arrayOf(parseProject)),
-  addProject: (path: string, name?: string) => request("/api/projects", parseProject, { method: "POST", body: JSON.stringify({ path, name }) }),
+  addProject: (path: string, name?: string, create?: boolean) => request("/api/projects", parseProject, { method: "POST", body: JSON.stringify({ path, name, create }) }),
+  projectDirectories: (query: string) => request(`/api/project-directories?q=${encodeURIComponent(query)}`, arrayOf(parseFileSuggestion)),
 };
 
 export const workspacesApi = {

@@ -14,13 +14,12 @@ export class ProjectController {
     }
   }
 
-  async addProject() {
-    const path = prompt("Project folder path");
-    if (path === null || path === "") return;
+  async addProject(path: string, create?: boolean) {
+    if (path.trim() === "") return;
     try {
-      const project = await api.addProject(path);
+      const project = await api.addProject(path.trim(), undefined, create);
       const projects = this.getState().projects;
-      this.setState({ projects: [...projects.filter((p) => p.id !== project.id), project] });
+      this.setState({ projects: [...projects.filter((p) => p.id !== project.id), project], projectDialogOpen: false });
       await this.workspaces.selectProject(project);
     } catch (error) {
       this.setState({ error: String(error) });
