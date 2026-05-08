@@ -28,7 +28,7 @@ describe("PluginRegistry", () => {
     registry.register(corePlugin);
 
     expect(registry.getActions(createContext().context).some((action) => action.id === "core:actions.show")).toBe(true);
-    expect(registry.getWorkspacePanels().map((panel) => panel.id)).toEqual(["core:workspace.files", "core:workspace.git"]);
+    expect(registry.getWorkspacePanels().map((panel) => panel.id)).toEqual(["core:workspace.files", "core:workspace.git", "core:workspace.terminal"]);
   });
 
   it("rejects duplicate ids within the same namespace", () => {

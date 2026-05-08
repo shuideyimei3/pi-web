@@ -1,4 +1,4 @@
-import type { CommandOption, CommandResult, FileContentResponse, FileSuggestion, FileTreeEntry, FileTreeResponse, GitDiffResponse, GitFileState, GitStatusFile, GitStatusResponse, MessagePage, Project, SessionInfo, SessionStatus, SlashCommand, Workspace } from "../../../shared/apiTypes";
+import type { CommandOption, CommandResult, FileContentResponse, FileSuggestion, FileTreeEntry, FileTreeResponse, GitDiffResponse, GitFileState, GitStatusFile, GitStatusResponse, MessagePage, Project, SessionInfo, SessionStatus, SlashCommand, TerminalInfo, Workspace } from "../../../shared/apiTypes";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -192,6 +192,11 @@ function parseGitFileState(value: unknown): GitFileState {
 export function parseGitDiffResponse(value: unknown): GitDiffResponse {
   const record = requireRecord(value);
   return { ...optionalField("path", optionalString(record, "path")), staged: requireBoolean(record, "staged"), hash: requireString(record, "hash"), diff: requireString(record, "diff"), truncated: requireBoolean(record, "truncated") };
+}
+
+export function parseTerminalInfo(value: unknown): TerminalInfo {
+  const record = requireRecord(value);
+  return { id: requireString(record, "id"), cwd: requireString(record, "cwd"), name: requireString(record, "name"), createdAt: requireString(record, "createdAt"), exited: requireBoolean(record, "exited"), ...optionalField("exitCode", optionalNumber(record, "exitCode")) };
 }
 
 export function parseCommandResult(value: unknown): CommandResult {

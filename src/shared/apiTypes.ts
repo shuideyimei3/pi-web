@@ -114,6 +114,15 @@ export interface GitDiffResponse {
   truncated: boolean;
 }
 
+export interface TerminalInfo {
+  id: string;
+  cwd: string;
+  name: string;
+  createdAt: string;
+  exited: boolean;
+  exitCode?: number;
+}
+
 export interface CommandOption {
   value: string;
   label: string;

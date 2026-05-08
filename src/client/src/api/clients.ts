@@ -19,6 +19,7 @@ import {
   parseSessionStatus,
   parseSlashCommand,
   parseStopped,
+  parseTerminalInfo,
   parseWorkspace,
 } from "./parsers";
 import { gitDiffUrl, messageUrl } from "./urls";
@@ -52,6 +53,12 @@ export const sessionsApi = {
   restore: (sessionId: string) => request(`/api/sessions/${sessionId}/restore`, parseRestored, { method: "POST" }),
 };
 
+export const terminalsApi = {
+  terminals: (projectId: string, workspaceId: string) => request(`/api/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/terminals`, arrayOf(parseTerminalInfo)),
+  startTerminal: (projectId: string, workspaceId: string, options?: { name?: string; cols?: number; rows?: number }) => request(`/api/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/terminals`, parseTerminalInfo, { method: "POST", body: JSON.stringify(options ?? {}) }),
+  closeTerminal: (projectId: string, workspaceId: string, terminalId: string) => request(`/api/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/terminals/${encodeURIComponent(terminalId)}`, parseClosed, { method: "DELETE" }),
+};
+
 export const filesApi = {
   files: (cwd: string, query: string, kind?: FileSuggestion["kind"], mode?: "file" | "path") => request(`/api/files?cwd=${encodeURIComponent(cwd)}&q=${encodeURIComponent(query)}${kind !== undefined ? `&kind=${encodeURIComponent(kind)}` : ""}${mode !== undefined ? `&mode=${encodeURIComponent(mode)}` : ""}`, arrayOf(parseFileSuggestion)),
 };
@@ -65,6 +72,7 @@ export const api = {
   ...projectsApi,
   ...workspacesApi,
   ...sessionsApi,
+  ...terminalsApi,
   ...filesApi,
   ...gitApi,
 };

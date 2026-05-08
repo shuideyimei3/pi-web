@@ -6,13 +6,17 @@ import { SessionEventHub } from "./realtime/sessionEventHub.js";
 import { PiSessionService } from "./sessions/piSessionService.js";
 import { registerSessionRoutes } from "./sessions/sessionRoutes.js";
 import { sessiondSocketPath } from "./sessiond/config.js";
+import { TerminalService } from "./terminals/terminalService.js";
+import { registerTerminalRoutes } from "./terminals/terminalRoutes.js";
 
 const app = Fastify({ logger: true });
 await app.register(fastifyWebsocket);
 
 const eventHub = new SessionEventHub();
 const sessions = new PiSessionService(eventHub);
+const terminals = new TerminalService();
 registerSessionRoutes(app, sessions, eventHub);
+registerTerminalRoutes(app, terminals);
 
 app.get("/health", () => ({ ok: true, activeSessions: sessions.activeCount(), checkedAt: new Date().toISOString() }));
 
@@ -21,6 +25,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   app.log.info({ signal }, "shutting down session daemon");
+  terminals.dispose();
   await sessions.dispose();
   await app.close();
 }

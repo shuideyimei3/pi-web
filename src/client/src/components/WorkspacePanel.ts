@@ -27,8 +27,9 @@ export class WorkspacePanel extends LitElement {
   @property({ attribute: false }) onSelectDiff: (path: string) => void = () => undefined;
 
   override render() {
-    if (!this.workspace) return html`<section class="empty">Select a workspace.</section>`;
-    const visiblePanels = this.panels.filter((panel) => panel.visible?.(this.workspace as Workspace) ?? true);
+    const workspace = this.workspace;
+    if (workspace === undefined) return html`<section class="empty">Select a workspace.</section>`;
+    const visiblePanels = this.panels.filter((panel) => panel.visible?.(workspace) ?? true);
     const selectedPanel = visiblePanels.find((panel) => panel.id === this.tool) ?? visiblePanels[0];
     return html`
       <header>
@@ -37,9 +38,9 @@ export class WorkspacePanel extends LitElement {
             <button class=${selectedPanel?.id === panel.id ? "selected" : ""} @click=${() => { this.onSelectTool(panel.id); }}>${panel.title}</button>
           `)}
         </div>
-        <small title=${this.workspace.path}>${this.workspace.label}</small>
+        <small title=${workspace.path}>${workspace.label}</small>
       </header>
-      ${selectedPanel === undefined ? html`<section class="empty">No workspace panels registered.</section>` : selectedPanel.render(this.createPanelContext(this.workspace))}
+      ${selectedPanel === undefined ? html`<section class="empty">No workspace panels registered.</section>` : selectedPanel.render(this.createPanelContext(workspace))}
     `;
   }
 

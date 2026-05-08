@@ -2,6 +2,7 @@ import { html, type TemplateResult } from "lit";
 import type { FileTreeEntry, GitDiffResponse, GitStatusResponse } from "../../api";
 import type { WorkspacePanelContribution, WorkspacePanelContext } from "../types";
 import "../../components/CodeViewer";
+import "../../components/TerminalPanel";
 
 export function createCoreWorkspacePanels(): WorkspacePanelContribution[] {
   return [
@@ -17,6 +18,12 @@ export function createCoreWorkspacePanels(): WorkspacePanelContribution[] {
       order: 20,
       visible: (workspace) => workspace.isGitRepo,
       render: renderGit,
+    },
+    {
+      id: "workspace.terminal",
+      title: "Terminal",
+      order: 30,
+      render: renderTerminal,
     },
   ];
 }
@@ -65,6 +72,10 @@ function renderFileViewer(context: WorkspacePanelContext): TemplateResult {
     <div class="viewer-header"><strong>${file.path}</strong><small>${file.language ?? "text"}${file.truncated ? " · truncated" : ""}</small></div>
     <code-viewer .content=${file.content} .language=${file.language}></code-viewer>
   `;
+}
+
+function renderTerminal(context: WorkspacePanelContext): TemplateResult {
+  return html`<terminal-panel .workspace=${context.workspace}></terminal-panel>`;
 }
 
 function renderGit(context: WorkspacePanelContext): TemplateResult {

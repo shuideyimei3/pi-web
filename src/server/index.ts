@@ -11,6 +11,7 @@ import { listDirectorySuggestions } from "./projects/directorySuggestions.js";
 import { registerSessionProxyRoutes } from "./sessiond/sessionProxyRoutes.js";
 import { registerWorkspaceExplorerRoutes } from "./workspaceExplorerRoutes.js";
 import { registerGitRoutes } from "./gitRoutes.js";
+import { registerTerminalProxyRoutes } from "./terminalProxyRoutes.js";
 
 const app = Fastify({ logger: true });
 await app.register(fastifyWebsocket);
@@ -57,6 +58,7 @@ app.get<{ Params: { projectId: string } }>("/api/projects/:projectId/workspaces"
 registerSessionProxyRoutes(app);
 registerWorkspaceExplorerRoutes(app, projects, workspaces);
 registerGitRoutes(app, projects, workspaces);
+registerTerminalProxyRoutes(app, projects, workspaces);
 
 app.get<{ Querystring: { cwd?: string; q?: string; kind?: "tracked" | "untracked" | "other"; mode?: "file" | "path" } }>("/api/files", async (request, reply) => {
   if (request.query.cwd === undefined || request.query.cwd === "") return reply.code(400).send({ error: "cwd query parameter is required" });
