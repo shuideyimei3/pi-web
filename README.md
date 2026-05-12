@@ -1,5 +1,11 @@
 # Pi Web
 
+[![CI](https://github.com/jmfederico/pi-web/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jmfederico/pi-web/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@jmfederico/pi-web)](https://www.npmjs.com/package/@jmfederico/pi-web)
+[![Node.js](https://img.shields.io/node/v/@jmfederico/pi-web)](package.json)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Pi Coding Agent](https://img.shields.io/badge/Pi-Coding%20Agent-6f42c1)](https://github.com/earendil-works/pi/tree/main/packages/coding-agent)
+
 ![Pi Web](docs/assets/pi-web-banner.png)
 
 **Run AI coding agents on your own machine or server, keep them alive in real workspaces, and control everything from a browser.**
