@@ -126,7 +126,7 @@ export class PiWebApp extends LitElement {
     const route = readRoute();
     const selectedFilePath = readNamespacedString(queryNamespace("core:workspace.files"), "file");
     const selectedDiffPath = readNamespacedString(queryNamespace("core:workspace.git"), "diff");
-    this.setState({ workspaceTool: route.tool ?? this.state.workspaceTool, mainView: route.view ?? this.state.mainView, selectedFilePath, selectedDiffPath });
+    this.setState({ workspaceTool: route.tool ?? this.state.workspaceTool, mainView: route.view ?? this.defaultRouteView(), selectedFilePath, selectedDiffPath });
     if (route.projectId === undefined || route.projectId === "") return;
     const project = this.state.projects.find((p) => p.id === route.projectId);
     if (!project) return;
@@ -152,6 +152,10 @@ export class PiWebApp extends LitElement {
     await action();
     await this.updateComplete;
     await this.chatView?.updateComplete;
+  }
+
+  private defaultRouteView(): AppState["mainView"] {
+    return this.isMobileNavigationLayout ? "navigation" : "chat";
   }
 
   private updateUrl(options?: { replace?: boolean | undefined }) {
@@ -263,7 +267,7 @@ export class PiWebApp extends LitElement {
         <button title="Show Actions" aria-label="Show Actions" @click=${() => { this.setState({ actionPaletteOpen: true }); }}>Actions</button>
       </header>
       <project-list .projects=${this.state.projects} .selected=${this.state.selectedProject} .onSelect=${(project: Project) => this.withChatScrollTransition(() => this.workspaces.selectProject(project))} .onClose=${(project: Project) => this.projects.closeProject(project.id)}></project-list>
-      <workspace-list .workspaces=${this.state.workspaces} .selected=${this.state.selectedWorkspace} .workspaceLabelItems=${(workspace: Workspace) => this.plugins.getWorkspaceLabelItems(this.state, workspace)} .onSelect=${(workspace: Workspace) => openChatAfter(() => this.workspaces.selectWorkspace(workspace))}></workspace-list>
+      <workspace-list .workspaces=${this.state.workspaces} .selected=${this.state.selectedWorkspace} .workspaceLabelItems=${(workspace: Workspace) => this.plugins.getWorkspaceLabelItems(this.state, workspace)} .onSelect=${(workspace: Workspace) => this.withChatScrollTransition(() => this.workspaces.selectWorkspace(workspace))}></workspace-list>
       <session-list .sessions=${this.state.sessions} .statuses=${this.state.sessionStatuses} .activities=${this.state.sessionActivities} .selected=${this.state.selectedSession} .canStart=${!!this.state.selectedWorkspace} .onStart=${() => openChatAfter(() => this.sessions.startSession())} .onSelect=${(session: SessionInfo) => openChatAfter(() => this.sessions.selectSession(session))} .onArchive=${(session: SessionInfo) => this.sessions.archiveSession(session)} .onRestore=${(session: SessionInfo) => openChatAfter(() => this.sessions.restoreSession(session))} .onDetachParent=${(session: SessionInfo) => this.sessions.detachParent(session)}></session-list>
     `;
   }
