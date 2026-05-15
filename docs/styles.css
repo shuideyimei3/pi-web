@@ -52,7 +52,12 @@ body::after {
 .home-page .hero-actions,
 .home-page .hero-stats,
 .home-page .terminal,
-.home-page main > section:not(.hero) {
+.home-page main > section:not(.hero),
+.error-page .site-header,
+.error-page .site-footer,
+.error-page .error-code,
+.error-page .error-copy,
+.error-page .error-actions {
   opacity: 0;
   animation: page-reveal 700ms ease-out 2.45s forwards;
 }
@@ -118,6 +123,11 @@ body::after {
   .home-page .hero-stats,
   .home-page .terminal,
   .home-page main > section:not(.hero),
+  .error-page .site-header,
+  .error-page .site-footer,
+  .error-page .error-code,
+  .error-page .error-copy,
+  .error-page .error-actions,
   .intro-word {
     opacity: 1;
     transform: none;
@@ -609,6 +619,53 @@ code .comment,
 
 .page-hero {
   padding: 76px 0 26px;
+}
+
+.error-page main {
+  display: grid;
+  align-items: center;
+  min-height: calc(100vh - 175px);
+}
+
+.error-hero {
+  overflow: hidden;
+  padding: clamp(64px, 10vw, 122px) 0;
+}
+
+.error-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 22px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.86rem;
+}
+
+.error-title {
+  max-width: 980px;
+}
+
+.error-title-line {
+  display: block;
+}
+
+.error-copy {
+  max-width: 680px;
+  margin: 28px 0 0;
+  color: var(--muted);
+  font-size: clamp(1.12rem, 2vw, 1.36rem);
+  line-height: 1.62;
+}
+
+.error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 30px;
 }
 
 .doc-layout {
