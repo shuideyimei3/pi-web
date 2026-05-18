@@ -152,6 +152,7 @@ describe("PiSessionService", () => {
     const service = new PiSessionService(new CapturingSessionEventHub(), {
       archiveStore: {
         list: () => Promise.resolve([{ sessionId: "archived", cwd: "/workspace", archivedAt: "2026-01-01T00:00:00.000Z" }]),
+        get: () => Promise.resolve(undefined),
         archive: () => Promise.resolve({ sessionId: "archived", cwd: "/workspace", archivedAt: "2026-01-01T00:00:00.000Z" }),
         restore: () => Promise.resolve(),
         isArchived: () => Promise.resolve(false),
@@ -173,6 +174,34 @@ describe("PiSessionService", () => {
     expect(sessions[0]).toMatchObject({ id: "active" });
     expect(sessions[0]?.archived).toBeUndefined();
     expect(sessions[1]).toMatchObject({ id: "archived", archived: true, archivedAt: "2026-01-01T00:00:00.000Z" });
+
+    await service.dispose();
+  });
+
+  it("lists archived records that have been moved out of the active session directory", async () => {
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      archiveStore: {
+        list: () => Promise.resolve([{ sessionId: "archived", cwd: "/workspace", archivedAt: "2026-01-02T00:00:00.000Z", originalPath: "/sessions/archived.jsonl", archivePath: "/archive/archived.jsonl", created: "2026-01-01T00:00:00.000Z", modified: "2026-01-01T00:01:00.000Z", messageCount: 2, firstMessage: "bye" }]),
+        get: () => Promise.resolve(undefined),
+        archive: () => { throw new Error("archive should not be called for moved records"); },
+        restore: () => Promise.resolve(),
+        isArchived: () => Promise.resolve(false),
+      },
+      sessionManager: {
+        create: () => fakeSessionManager(),
+        list: () => Promise.resolve([{ ...sessionRecord("active"), messageCount: 1, firstMessage: "hello", allMessagesText: "hello" }]),
+        listAll: () => Promise.resolve([]),
+        open: () => fakeSessionManager(),
+      },
+      heartbeatIntervalMs: 60_000,
+    });
+
+    const sessions = await service.list("/workspace");
+
+    expect(sessions).toHaveLength(2);
+    expect(sessions[0]).toMatchObject({ id: "active" });
+    expect(sessions[0]?.archived).toBeUndefined();
+    expect(sessions[1]).toMatchObject({ id: "archived", path: "/sessions/archived.jsonl", archived: true, archivedAt: "2026-01-02T00:00:00.000Z" });
 
     await service.dispose();
   });

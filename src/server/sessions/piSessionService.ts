@@ -15,7 +15,7 @@ import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import { BUILTIN_COMMANDS } from "./builtinCommands.js";
 import { SessionCommandService } from "./sessionCommandService.js";
-import { SessionArchiveStore } from "./sessionArchiveStore.js";
+import { SessionArchiveStore, type ArchivedSessionRecord, type ArchiveSessionInput } from "./sessionArchiveStore.js";
 import type { ActiveSession } from "./sessionRuntimeStore.js";
 import type { AuthChange } from "./authService.js";
 import { fallbackSessionName, generateShortSessionName } from "./sessionNameGenerator.js";
@@ -28,7 +28,19 @@ function authLossWarningKey(sessionId: string, provider: string, modelId: string
   return `${sessionId}:${provider}/${modelId}`;
 }
 
-type SessionArchiveRepository = Pick<SessionArchiveStore, "list" | "archive" | "restore" | "isArchived">;
+type SessionArchiveRepository = Pick<SessionArchiveStore, "list" | "get" | "archive" | "restore" | "isArchived">;
+interface PiSessionListEntry {
+  id: string;
+  path: string;
+  cwd: string;
+  created: Date;
+  modified: Date;
+  messageCount: number;
+  firstMessage: string;
+  allMessagesText: string;
+  name?: string;
+  parentSessionPath?: string;
+}
 type AgentModel = Model<Api>;
 type ModelRegistryInstance = ReturnType<typeof ModelRegistry.create>;
 
@@ -40,9 +52,9 @@ export interface PiSessionManager {
 }
 
 export interface PiSessionManagerGateway {
-  list(cwd: string): Promise<{ id: string; path: string; cwd: string; created: Date; modified: Date; messageCount: number; firstMessage: string; allMessagesText: string; name?: string; parentSessionPath?: string }[]>;
+  list(cwd: string): Promise<PiSessionListEntry[]>;
   create(cwd: string): PiSessionManager;
-  listAll(): Promise<{ id: string; path: string; cwd: string; created: Date; modified: Date; messageCount: number; firstMessage: string; allMessagesText: string }[]>;
+  listAll(): Promise<PiSessionListEntry[]>;
   open(path: string): PiSessionManager;
 }
 
@@ -181,22 +193,19 @@ export class PiSessionService {
 
   async list(cwd: string): Promise<ClientSession[]> {
     const [sessions, archivedRecords] = await Promise.all([this.sessionManager.list(cwd), this.archiveStore.list()]);
-    const archivedById = new Map(archivedRecords.filter((record) => record.cwd === cwd).map((record) => [record.sessionId, record]));
-    return sessions.map((s) => {
-      const archived = archivedById.get(s.id);
-      return {
-        id: s.id,
-        path: s.path,
-        cwd: s.cwd,
-        ...(s.name === undefined ? {} : { name: s.name }),
-        created: s.created.toISOString(),
-        modified: s.modified.toISOString(),
-        messageCount: s.messageCount,
-        firstMessage: s.firstMessage,
-        ...(s.parentSessionPath === undefined ? {} : { parentSessionPath: s.parentSessionPath }),
-        ...(archived === undefined ? {} : { archived: true, archivedAt: archived.archivedAt }),
-      };
-    });
+    const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+    const archivedForCwd = await Promise.all(
+      archivedRecords
+        .filter((record) => record.cwd === cwd)
+        .map((record) => this.ensureArchivedSessionMoved(record, sessionsById.get(record.sessionId))),
+    );
+    const archivedById = new Map(archivedForCwd.map((record) => [record.sessionId, record]));
+    const activeSessions = sessions.filter((session) => !archivedById.has(session.id)).map(clientSessionFromListEntry);
+    const archivedSessions = archivedForCwd
+      .sort(compareArchivedRecords)
+      .map((record) => clientSessionFromArchivedRecord(record, sessionsById.get(record.sessionId)))
+      .filter(isDefined);
+    return [...activeSessions, ...archivedSessions];
   }
 
   async start(cwd: string): Promise<ClientSession> {
@@ -364,11 +373,13 @@ export class PiSessionService {
   async archive(sessionId: string): Promise<void> {
     const session = await this.getOrOpen(sessionId);
     if (session.isStreaming || session.isCompacting || session.isBashRunning || session.pendingMessageCount > 0) throw new Error("Stop current session activity before archiving");
-    await this.archiveStore.archive(sessionId, session.sessionManager.getCwd());
-    this.stop(sessionId);
+    const archiveInput = await this.archiveInputForSession(session);
+    await this.closeActive(session.sessionId);
+    await this.archiveStore.archive(archiveInput);
   }
 
   async restore(sessionId: string): Promise<void> {
+    await this.closeActive(sessionId);
     await this.archiveStore.restore(sessionId);
   }
 
@@ -389,14 +400,51 @@ export class PiSessionService {
   }
 
   stop(sessionId: string): void {
+    void this.closeActive(sessionId).catch(() => {
+      // Best-effort shutdown; callers that need errors await closeActive directly.
+    });
+  }
+
+  private async ensureArchivedSessionMoved(record: ArchivedSessionRecord, session: PiSessionListEntry | undefined): Promise<ArchivedSessionRecord> {
+    if (session === undefined || this.active.has(record.sessionId)) return record;
+    try {
+      return await this.archiveStore.archive(archiveInputFromListEntry(session));
+    } catch {
+      return record;
+    }
+  }
+
+  private async archiveInputForSession(session: PiAgentSession): Promise<ArchiveSessionInput> {
+    const cwd = session.sessionManager.getCwd();
+    const sessionFile = session.sessionFile;
+    if (sessionFile === undefined || sessionFile === "") throw new Error("Session is not persisted");
+    const listed = (await this.sessionManager.list(cwd)).find((candidate) => candidate.id === session.sessionId);
+    if (listed !== undefined) return archiveInputFromListEntry(listed);
+    return {
+      sessionId: session.sessionId,
+      cwd,
+      path: sessionFile,
+      created: new Date().toISOString(),
+      modified: new Date().toISOString(),
+      messageCount: session.messages.length,
+      firstMessage: "",
+      ...(session.sessionName === undefined ? {} : { name: session.sessionName }),
+    };
+  }
+
+  private async closeActive(sessionId: string): Promise<void> {
     const active = this.active.get(sessionId);
     if (!active) return;
-    clearSessionQueue(active.runtime.session);
-    active.unsubscribe();
-    void active.runtime.session.abort().finally(() => active.runtime.dispose());
     this.active.delete(sessionId);
     this.activities.delete(sessionId);
     this.clearAuthLossWarningsForSession(sessionId);
+    clearSessionQueue(active.runtime.session);
+    active.unsubscribe();
+    try {
+      await active.runtime.session.abort();
+    } finally {
+      await active.runtime.dispose();
+    }
   }
 
   private async assertWritable(sessionId: string): Promise<void> {
@@ -410,6 +458,9 @@ export class PiSessionService {
   private async getActive(sessionId: string): Promise<ActiveSession<PiSessionRuntime>> {
     const active = this.active.get(sessionId);
     if (active) return active;
+
+    const archived = await this.archiveStore.get(sessionId);
+    if (archived?.archivePath !== undefined) return this.create(this.sessionManager.open(archived.archivePath), archived.cwd);
 
     const match = (await this.sessionManager.listAll()).find((s) => s.id === sessionId || s.id.startsWith(sessionId));
     if (!match) throw new Error("Session not found");
@@ -599,6 +650,71 @@ function modelToClientModel(model: PiAgentSession["model"]): ClientSessionModel 
     contextWindow: model.contextWindow,
     ...(reasoning === undefined ? {} : { reasoning }),
   };
+}
+
+function clientSessionFromListEntry(session: PiSessionListEntry): ClientSession {
+  return {
+    id: session.id,
+    path: session.path,
+    cwd: session.cwd,
+    ...(session.name === undefined ? {} : { name: session.name }),
+    created: session.created.toISOString(),
+    modified: session.modified.toISOString(),
+    messageCount: session.messageCount,
+    firstMessage: session.firstMessage,
+    ...(session.parentSessionPath === undefined ? {} : { parentSessionPath: session.parentSessionPath }),
+  };
+}
+
+function archiveInputFromListEntry(session: PiSessionListEntry): ArchiveSessionInput {
+  return {
+    sessionId: session.id,
+    cwd: session.cwd,
+    path: session.path,
+    created: session.created.toISOString(),
+    modified: session.modified.toISOString(),
+    messageCount: session.messageCount,
+    firstMessage: session.firstMessage,
+    ...(session.name === undefined ? {} : { name: session.name }),
+    ...(session.parentSessionPath === undefined ? {} : { parentSessionPath: session.parentSessionPath }),
+  };
+}
+
+function clientSessionFromArchivedRecord(record: ArchivedSessionRecord, fallback: PiSessionListEntry | undefined): ClientSession | undefined {
+  const path = record.originalPath ?? fallback?.path;
+  const created = record.created ?? fallback?.created.toISOString();
+  const modified = record.modified ?? fallback?.modified.toISOString();
+  const messageCount = record.messageCount ?? fallback?.messageCount;
+  const firstMessage = record.firstMessage ?? fallback?.firstMessage;
+  if (path === undefined || created === undefined || modified === undefined || messageCount === undefined || firstMessage === undefined) return undefined;
+  const name = record.name ?? fallback?.name;
+  const parentSessionPath = record.parentSessionPath ?? fallback?.parentSessionPath;
+  return {
+    id: record.sessionId,
+    path,
+    cwd: record.cwd,
+    ...(name === undefined ? {} : { name }),
+    created,
+    modified,
+    messageCount,
+    firstMessage,
+    ...(parentSessionPath === undefined ? {} : { parentSessionPath }),
+    archived: true,
+    archivedAt: record.archivedAt,
+  };
+}
+
+function compareArchivedRecords(a: ArchivedSessionRecord, b: ArchivedSessionRecord): number {
+  return archivedTimestamp(b) - archivedTimestamp(a);
+}
+
+function archivedTimestamp(record: ArchivedSessionRecord): number {
+  const time = Date.parse(record.archivedAt);
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function isDefined<T>(value: T | undefined): value is T {
+  return value !== undefined;
 }
 
 async function clearParentSession(sessionFile: string): Promise<void> {
