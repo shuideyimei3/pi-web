@@ -485,7 +485,10 @@ export class PiWebApp extends LitElement {
     return html`
       <header>
         <strong>PI WEB</strong>
-        <button title="Show Actions" aria-label="Show Actions" @click=${() => { this.setState({ actionPaletteOpen: true }); }}>Actions</button>
+        <div class="header-actions">
+          ${this.isMobileNavigationLayout ? null : this.renderAppRefresh()}
+          <button title="Show Actions" aria-label="Show Actions" @click=${() => { this.setState({ actionPaletteOpen: true }); }}>Actions</button>
+        </div>
       </header>
       <project-list
         .projects=${this.state.projects}
@@ -870,7 +873,7 @@ export class PiWebApp extends LitElement {
             </button>
           </li>
         </ol>
-        <div class="context-actions">${this.renderAppRefresh()}</div>
+        <div class="context-actions">${this.isMobileNavigationLayout ? this.renderAppRefresh() : null}</div>
       </nav>
     `;
   }

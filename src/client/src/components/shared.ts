@@ -54,6 +54,7 @@ export const appStyles = css`
   .shell { display: grid; grid-template-columns: 340px minmax(420px, 1fr) minmax(360px, 42vw); height: 100%; min-height: 0; }
   aside { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--pi-border); overflow: hidden; }
   header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
+  .header-actions { display: flex; align-items: center; gap: 8px; }
   project-list, workspace-list { flex: 0 0 auto; max-height: 26%; overflow: auto; border-bottom: 1px solid var(--pi-border-muted); }
   session-list { flex: 1 1 auto; min-height: 0; overflow: auto; }
   main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
