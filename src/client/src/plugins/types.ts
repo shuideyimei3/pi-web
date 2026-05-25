@@ -2,10 +2,9 @@ import type { TemplateResult } from "lit";
 import type { AppAction } from "../actions";
 import type { FileContentResponse, FileTreeEntry, GitDiffResponse, GitStatusResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, Workspace } from "../api";
 import type { AppState } from "../appState";
+import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 
-export type PluginId = string;
-export type LocalContributionId = string;
-export type QualifiedContributionId = `${PluginId}:${LocalContributionId}`;
+export type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 export type HtmlTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => TemplateResult;
 
 export interface PiWebPluginRegistration {
