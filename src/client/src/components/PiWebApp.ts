@@ -21,7 +21,9 @@ import { themePackPlugin } from "../plugins/themes";
 import { loadExternalPlugins } from "../plugins/external";
 import { PluginRegistry, installPluginRuntimeScope, installWorkspacePanelScope } from "../plugins/registry";
 import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
-import { createPwaDisplayModeMedia, detectPwaDisplayMode } from "../pwaDisplayMode";
+import { AppShellController } from "../appShell/appShellController";
+import { MobileNavigationController, type NavigationSection } from "../appShell/navigationState";
+import { PanelCollapseController, mainViewClass } from "../appShell/panelCollapseController";
 import { readRoute, writeRoute, type AppRoute } from "../route";
 import { createTerminalCommandRunsRuntime } from "../runtime/terminalRuntime";
 import { isWorkspaceDeletionPending, isWorkspaceDeletionRunPending, latestWorkspaceDeletionRuns, pendingWorkspaceDeletionIds, targetWorkspaceIdForRun, workspaceDeletionMetadata, workspaceDeletionRunFilter } from "../workspaceDeletion";
@@ -39,10 +41,13 @@ import "./AuthDialog";
 import "./ProjectDialog";
 import "./WorkspacePanel";
 import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
-import { actionMenuPanelStyle } from "./actionMenu";
+import "./appShell/AppContextBar";
+import "./appShell/AppMobileMainTabs";
+import type { AppMobileMainTab } from "./appShell/AppMobileMainTabs";
+import "./appShell/AppNavigationPanel";
+import "./appShell/AppPanelEdgeControl";
+import "./appShell/AppRefreshControl";
 import { appStyles } from "./shared";
-
-type NavigationSection = "projects" | "workspaces" | "sessions";
 
 const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
 const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
@@ -50,19 +55,12 @@ const THEME_AUTO_ON_VALUE = "auto:on";
 const THEME_AUTO_OFF_VALUE = "auto:off";
 const THEME_OPTION_PREFIX = "theme:";
 const TERMINAL_ROUTE_NAMESPACE = queryNamespace("core:workspace.terminal");
-const REFRESH_LONG_PRESS_MS = 550;
-const VIEWPORT_POSITION_REPAIR_DELAY_MS = 250;
 
 @customElement("pi-web-app")
 export class PiWebApp extends LitElement {
   @state() private state: AppState = initialAppState();
-  @state() private navigationPanelCollapsed = false;
-  @state() private workspacePanelCollapsed = false;
   @query("chat-view") private chatView?: ChatView;
   @query("prompt-editor") private promptEditor?: PromptEditor;
-  @query(".context-items") private contextItems?: HTMLElement | null;
-  @query(".mobile-tabs") private mobileTabs?: HTMLElement | null;
-  @query(".app-refresh") private appRefresh?: HTMLElement | null;
 
   private readonly sessions = new SessionController(
     () => this.state,
@@ -103,13 +101,14 @@ export class PiWebApp extends LitElement {
   private readonly realtime = new RealtimeSocket();
   private readonly activeTerminalIds = new Set<string>();
   private readonly terminalSelection = new InMemoryTerminalSelectionMemory();
-  private readonly mobileNavigationMedia = typeof window !== "undefined" && "matchMedia" in window ? window.matchMedia("(max-width: 760px)") : undefined;
+  private readonly appShell = new AppShellController(this);
+  private readonly panelCollapse = new PanelCollapseController(this);
+  private readonly mobileNavigation = new MobileNavigationController(
+    this,
+    () => this.state,
+    () => this.appShell.isMobileNavigationLayout,
+  );
   private readonly systemLightThemeMedia = typeof window !== "undefined" && "matchMedia" in window ? window.matchMedia("(prefers-color-scheme: light)") : undefined;
-  private readonly pwaDisplayModeMedia = createPwaDisplayModeMedia();
-  private observedContextItems: HTMLElement | undefined;
-  private observedMobileTabs: HTMLElement | undefined;
-  private contextItemsResizeObserver: ResizeObserver | undefined;
-  private mobileTabsResizeObserver: ResizeObserver | undefined;
   private terminalAutoStartWorkspaceId: string | undefined;
   private piWebStatusTimer: number | undefined;
   private workspaceDeletionPollTimer: number | undefined;
@@ -120,27 +119,14 @@ export class PiWebApp extends LitElement {
   private restoringRouteTerminalId: string | undefined;
   private readonly plugins = createPluginRegistry();
   private themePreference: ThemePreference = readStoredThemePreference() ?? DEFAULT_THEME_PREFERENCE;
-  private refreshLongPressTimer: number | undefined;
-  private suppressNextRefreshClick = false;
-  private viewportPositionRepairFrame: number | undefined;
-  private viewportPositionRepairTimer: number | undefined;
   @state() private activeThemeId: QualifiedContributionId = CLASSIC_THEME_ID;
-  @state() private isMobileNavigationLayout = this.mobileNavigationMedia?.matches ?? false;
-  @state() private isPwaDisplayMode = detectPwaDisplayMode(this.pwaDisplayModeMedia);
   @state() private isRefreshingApp = false;
-  @state() private refreshMenuOpen = false;
-  @state() private refreshMenuStyle = "";
-  @state() private expandedMobileNavigationSection: NavigationSection | "none" | undefined;
-  @state() private contextCanScrollLeft = false;
-  @state() private contextCanScrollRight = false;
-  @state() private mobileTabsCanScrollLeft = false;
-  @state() private mobileTabsCanScrollRight = false;
   private readonly onPopState = () => void this.withChatScrollTransition(() => this.restoreRoute(false));
   private readonly onPageShow = () => {
-    this.repairViewportPosition();
+    this.appShell.repairViewportPosition();
   };
   private readonly onFocus = () => {
-    this.repairViewportPosition();
+    this.appShell.repairViewportPosition();
     void this.sessions.refreshSelectedSession();
     void this.refreshPiWebStatus();
     void this.refreshWorkspaceActivity();
@@ -148,44 +134,17 @@ export class PiWebApp extends LitElement {
   };
   private readonly onVisibilityChange = () => {
     if (document.visibilityState === "visible") {
-      this.repairViewportPosition();
+      this.appShell.repairViewportPosition();
       void this.sessions.refreshSelectedSession();
       void this.refreshPiWebStatus();
       void this.refreshWorkspaceActivity();
       void this.refreshWorkspaceDeletionRuns();
     }
   };
-  private readonly onMobileNavigationMediaChange = (event: MediaQueryListEvent) => {
-    this.isMobileNavigationLayout = event.matches;
-    this.updateContextScrollState();
-    this.updateMobileTabsScrollState();
-  };
   private readonly onSystemLightThemeChange = () => {
     if (this.themePreference.auto) this.applyPreferredTheme(false);
   };
-  private readonly onPwaDisplayModeChange = () => {
-    this.isPwaDisplayMode = detectPwaDisplayMode(this.pwaDisplayModeMedia);
-  };
-  private readonly onContextScroll = () => {
-    this.updateContextScrollState();
-  };
-  private readonly onMobileTabsScroll = () => {
-    this.updateMobileTabsScrollState();
-  };
-  private readonly onDocumentClick = (event: MouseEvent) => {
-    const refresh = this.appRefreshElement();
-    if (refresh !== undefined && event.composedPath().includes(refresh)) return;
-    this.refreshMenuOpen = false;
-    this.suppressNextRefreshClick = false;
-  };
   private readonly onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && this.refreshMenuOpen) {
-      event.preventDefault();
-      event.stopPropagation();
-      this.refreshMenuOpen = false;
-      this.suppressNextRefreshClick = false;
-      return;
-    }
     if (this.keyboard.handle(event, this.getActions())) {
       event.preventDefault();
       event.stopPropagation();
@@ -197,12 +156,9 @@ export class PiWebApp extends LitElement {
     window.addEventListener("popstate", this.onPopState);
     window.addEventListener("pageshow", this.onPageShow);
     window.addEventListener("focus", this.onFocus);
-    document.addEventListener("click", this.onDocumentClick);
     document.addEventListener("visibilitychange", this.onVisibilityChange);
     window.addEventListener("keydown", this.onKeyDown, GLOBAL_SHORTCUT_LISTENER_OPTIONS);
-    this.mobileNavigationMedia?.addEventListener("change", this.onMobileNavigationMediaChange);
     this.systemLightThemeMedia?.addEventListener("change", this.onSystemLightThemeChange);
-    for (const media of this.pwaDisplayModeMedia) media.addEventListener("change", this.onPwaDisplayModeChange);
     this.applyPreferredTheme(false);
     this.connectRealtime();
     this.piWebStatusTimer = window.setInterval(() => { void this.refreshPiWebStatus(); }, PI_WEB_STATUS_REFRESH_MS);
@@ -216,12 +172,9 @@ export class PiWebApp extends LitElement {
     window.removeEventListener("popstate", this.onPopState);
     window.removeEventListener("pageshow", this.onPageShow);
     window.removeEventListener("focus", this.onFocus);
-    document.removeEventListener("click", this.onDocumentClick);
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
     window.removeEventListener("keydown", this.onKeyDown, GLOBAL_SHORTCUT_LISTENER_OPTIONS);
-    this.mobileNavigationMedia?.removeEventListener("change", this.onMobileNavigationMediaChange);
     this.systemLightThemeMedia?.removeEventListener("change", this.onSystemLightThemeChange);
-    for (const media of this.pwaDisplayModeMedia) media.removeEventListener("change", this.onPwaDisplayModeChange);
     this.keyboard.reset();
     this.auth.dispose();
     this.sessions.dispose();
@@ -231,29 +184,7 @@ export class PiWebApp extends LitElement {
     this.piWebStatusTimer = undefined;
     if (this.workspaceDeletionPollTimer !== undefined) window.clearInterval(this.workspaceDeletionPollTimer);
     this.workspaceDeletionPollTimer = undefined;
-    this.contextItemsResizeObserver?.disconnect();
-    this.contextItemsResizeObserver = undefined;
-    this.observedContextItems = undefined;
-    this.mobileTabsResizeObserver?.disconnect();
-    this.mobileTabsResizeObserver = undefined;
-    this.observedMobileTabs = undefined;
-    this.clearRefreshLongPressTimer();
-    this.clearViewportPositionRepair();
     super.disconnectedCallback();
-  }
-
-  override firstUpdated(): void {
-    this.observeContextItems();
-    this.observeMobileTabs();
-    this.updateContextScrollState();
-    this.updateMobileTabsScrollState();
-  }
-
-  override updated(): void {
-    this.observeContextItems();
-    this.observeMobileTabs();
-    this.updateContextScrollState();
-    this.updateMobileTabsScrollState();
   }
 
   private setState(patch: Partial<AppState>) {
@@ -288,8 +219,6 @@ export class PiWebApp extends LitElement {
 
   private async refreshAppData(): Promise<void> {
     if (this.isRefreshingApp) return;
-    this.refreshMenuOpen = false;
-    this.suppressNextRefreshClick = false;
     this.isRefreshingApp = true;
     try {
       await Promise.all([
@@ -370,47 +299,7 @@ export class PiWebApp extends LitElement {
   }
 
   private shouldAutoFocusPrompt(): boolean {
-    return !this.isMobileNavigationLayout && !this.isPwaDisplayMode;
-  }
-
-  private repairViewportPosition(): void {
-    if (!this.shouldRepairViewportPosition()) return;
-    this.resetViewportScroll();
-    if (this.viewportPositionRepairFrame !== undefined) window.cancelAnimationFrame(this.viewportPositionRepairFrame);
-    this.viewportPositionRepairFrame = window.requestAnimationFrame(() => {
-      this.viewportPositionRepairFrame = undefined;
-      this.resetViewportScroll();
-      this.viewportPositionRepairFrame = window.requestAnimationFrame(() => {
-        this.viewportPositionRepairFrame = undefined;
-        this.resetViewportScroll();
-      });
-    });
-    if (this.viewportPositionRepairTimer !== undefined) window.clearTimeout(this.viewportPositionRepairTimer);
-    this.viewportPositionRepairTimer = window.setTimeout(() => {
-      this.viewportPositionRepairTimer = undefined;
-      this.resetViewportScroll();
-    }, VIEWPORT_POSITION_REPAIR_DELAY_MS);
-  }
-
-  private shouldRepairViewportPosition(): boolean {
-    return this.isMobileNavigationLayout || this.isPwaDisplayMode;
-  }
-
-  private resetViewportScroll(): void {
-    window.scrollTo(0, 0);
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
-  }
-
-  private clearViewportPositionRepair(): void {
-    if (this.viewportPositionRepairFrame !== undefined) {
-      window.cancelAnimationFrame(this.viewportPositionRepairFrame);
-      this.viewportPositionRepairFrame = undefined;
-    }
-    if (this.viewportPositionRepairTimer !== undefined) {
-      window.clearTimeout(this.viewportPositionRepairTimer);
-      this.viewportPositionRepairTimer = undefined;
-    }
+    return this.appShell.shouldAutoFocusPrompt();
   }
 
   private async withChatPrependTransition(action: () => Promise<void>) {
@@ -420,7 +309,7 @@ export class PiWebApp extends LitElement {
   }
 
   private defaultRouteView(): AppState["mainView"] {
-    return this.isMobileNavigationLayout ? "navigation" : "chat";
+    return this.appShell.defaultRouteView();
   }
 
   private updateUrl(options?: { replace?: boolean | undefined }) {
@@ -582,61 +471,30 @@ export class PiWebApp extends LitElement {
     `;
   }
 
-  private toggleNavigationPanelCollapse(): void {
-    this.navigationPanelCollapsed = !this.navigationPanelCollapsed;
-  }
-
   private renderNavigationPanelEdgeControl() {
-    const collapsed = this.navigationPanelCollapsed;
-    const label = collapsed ? "Expand navigation panel" : "Collapse navigation panel";
     return html`
-      <div class="navigation-panel-edge">
-        <button
-          type="button"
-          class="navigation-panel-edge-button"
-          title=${label}
-          aria-label=${label}
-          aria-controls="navigation-panel"
-          aria-expanded=${String(!collapsed)}
-          @click=${() => { this.toggleNavigationPanelCollapse(); }}
-        >${this.renderNavigationPanelEdgeIcon(collapsed)}</button>
-      </div>
+      <app-panel-edge-control
+        side="navigation"
+        controls="navigation-panel"
+        expandLabel="Expand navigation panel"
+        collapseLabel="Collapse navigation panel"
+        .collapsed=${this.panelCollapse.navigationPanelCollapsed}
+        .onToggle=${() => { this.panelCollapse.toggleNavigationPanel(); }}
+      ></app-panel-edge-control>
     `;
-  }
-
-  private renderNavigationPanelEdgeIcon(collapsed: boolean) {
-    return this.renderPanelEdgeIcon(collapsed ? "right" : "left", "navigation-panel-edge-icon");
-  }
-
-  private toggleWorkspacePanelCollapse(): void {
-    this.workspacePanelCollapsed = !this.workspacePanelCollapsed;
   }
 
   private renderWorkspacePanelEdgeControl() {
-    const collapsed = this.workspacePanelCollapsed;
-    const label = collapsed ? "Expand workspace panel" : "Collapse workspace panel";
     return html`
-      <div class="workspace-panel-edge">
-        <button
-          type="button"
-          class="workspace-panel-edge-button"
-          title=${label}
-          aria-label=${label}
-          aria-controls="workspace-panel"
-          aria-expanded=${String(!collapsed)}
-          @click=${() => { this.toggleWorkspacePanelCollapse(); }}
-        >${this.renderWorkspacePanelEdgeIcon(collapsed)}</button>
-      </div>
+      <app-panel-edge-control
+        side="workspace"
+        controls="workspace-panel"
+        expandLabel="Expand workspace panel"
+        collapseLabel="Collapse workspace panel"
+        .collapsed=${this.panelCollapse.workspacePanelCollapsed}
+        .onToggle=${() => { this.panelCollapse.toggleWorkspacePanel(); }}
+      ></app-panel-edge-control>
     `;
-  }
-
-  private renderWorkspacePanelEdgeIcon(collapsed: boolean) {
-    return this.renderPanelEdgeIcon(collapsed ? "left" : "right", "workspace-panel-edge-icon");
-  }
-
-  private renderPanelEdgeIcon(direction: "left" | "right", className: string) {
-    const path = direction === "left" ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6";
-    return html`<svg class=${className} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d=${path}/></svg>`;
   }
 
   private renderNavigationPanel(autoSwitchToChat: boolean) {
@@ -646,91 +504,53 @@ export class PiWebApp extends LitElement {
       if (autoSwitchToChat) this.updateUrl();
     });
     return html`
-      <header>
-        <strong>PI WEB</strong>
-        <div class="header-actions">
-          ${this.shouldShowAppRefreshInHeader() ? this.renderAppRefresh() : null}
-          <button title="Show Actions" aria-label="Show Actions" @click=${() => { this.setState({ actionPaletteOpen: true }); }}>Actions</button>
-        </div>
-      </header>
-      <project-list
+      <app-navigation-panel
         .projects=${this.state.projects}
-        .selected=${this.state.selectedProject}
-        .activities=${this.state.workspaceActivities}
+        .selectedProject=${this.state.selectedProject}
+        .workspaceActivities=${this.state.workspaceActivities}
         .workspacesByProjectId=${this.state.workspacesByProjectId}
-        .collapsible=${this.isMobileNavigationLayout}
-        .collapsed=${this.isNavigationSectionCollapsed("projects")}
-        .onToggleCollapsed=${() => { this.toggleNavigationSection("projects"); }}
-        .onSelect=${(project: Project) => this.withChatScrollTransition(async () => {
-          this.expandNavigationSection("workspaces");
+        .workspaces=${this.state.workspaces}
+        .selectedWorkspace=${this.state.selectedWorkspace}
+        .deletingWorkspaceIds=${pendingWorkspaceDeletionIds(this.state.workspaceDeletionRuns)}
+        .sessions=${this.state.sessions}
+        .sessionStatuses=${this.state.sessionStatuses}
+        .sessionActivities=${this.state.sessionActivities}
+        .selectedSession=${this.state.selectedSession}
+        .canStartSession=${!!this.state.selectedWorkspace}
+        .collapsible=${this.appShell.isMobileNavigationLayout}
+        .projectsCollapsed=${this.mobileNavigation.isCollapsed("projects")}
+        .workspacesCollapsed=${this.mobileNavigation.isCollapsed("workspaces")}
+        .sessionsCollapsed=${this.mobileNavigation.isCollapsed("sessions")}
+        .workspaceLabelItems=${(workspace: Workspace) => this.plugins.getWorkspaceLabelItems(this.state, workspace)}
+        .refreshControl=${this.appShell.shouldShowAppRefreshInHeader() ? this.renderAppRefresh() : undefined}
+        .onShowActions=${() => { this.setState({ actionPaletteOpen: true }); }}
+        .onToggleProjects=${() => { this.mobileNavigation.toggle("projects"); }}
+        .onToggleWorkspaces=${() => { this.mobileNavigation.toggle("workspaces"); }}
+        .onToggleSessions=${() => { this.mobileNavigation.toggle("sessions"); }}
+        .onSelectProject=${(project: Project) => this.withChatScrollTransition(async () => {
+          this.mobileNavigation.expand("workspaces");
           await this.workspaces.selectProject(project);
         })}
-        .onClose=${(project: Project) => this.projects.closeProject(project.id)}
-      ></project-list>
-      <workspace-list
-        .workspaces=${this.state.workspaces}
-        .selected=${this.state.selectedWorkspace}
-        .activities=${this.state.workspaceActivities}
-        .deletingWorkspaceIds=${pendingWorkspaceDeletionIds(this.state.workspaceDeletionRuns)}
-        .collapsible=${this.isMobileNavigationLayout}
-        .collapsed=${this.isNavigationSectionCollapsed("workspaces")}
-        .workspaceLabelItems=${(workspace: Workspace) => this.plugins.getWorkspaceLabelItems(this.state, workspace)}
-        .onToggleCollapsed=${() => { this.toggleNavigationSection("workspaces"); }}
-        .onSelect=${(workspace: Workspace) => this.withChatScrollTransition(async () => {
-          this.expandNavigationSection("sessions");
+        .onCloseProject=${(project: Project) => this.projects.closeProject(project.id)}
+        .onSelectWorkspace=${(workspace: Workspace) => this.withChatScrollTransition(async () => {
+          this.mobileNavigation.expand("sessions");
           await this.workspaces.selectWorkspace(workspace);
         })}
-        .onDelete=${(workspace: Workspace) => { void this.deleteWorkspace(workspace); }}
-      ></workspace-list>
-      <session-list
-        .sessions=${this.state.sessions}
-        .statuses=${this.state.sessionStatuses}
-        .activities=${this.state.sessionActivities}
-        .selected=${this.state.selectedSession}
-        .canStart=${!!this.state.selectedWorkspace}
-        .collapsible=${this.isMobileNavigationLayout}
-        .collapsed=${this.isNavigationSectionCollapsed("sessions")}
-        .onToggleCollapsed=${() => { this.toggleNavigationSection("sessions"); }}
+        .onDeleteWorkspace=${(workspace: Workspace) => { void this.deleteWorkspace(workspace); }}
         .onArchivedCollapsed=${() => { this.sessions.clearSelectionAfterArchivedCollapse(); }}
-        .onStart=${() => openChatAfter(() => this.sessions.startSession())}
-        .onSelect=${(session: SessionInfo) => openChatAfter(() => this.sessions.selectSession(session))}
-        .onArchive=${(session: SessionInfo) => this.sessions.archiveSession(session)}
-        .onArchiveWithDescendants=${(session: SessionInfo) => this.sessions.archiveSessionWithDescendants(session)}
-        .onRestore=${(session: SessionInfo) => openChatAfter(() => this.sessions.restoreSession(session))}
-        .onDelete=${(session: SessionInfo) => this.sessions.deleteCachedNewSession(session)}
-        .onDetachParent=${(session: SessionInfo) => this.sessions.detachParent(session)}
-      ></session-list>
+        .onStartSession=${() => openChatAfter(() => this.sessions.startSession())}
+        .onSelectSession=${(session: SessionInfo) => openChatAfter(() => this.sessions.selectSession(session))}
+        .onArchiveSession=${(session: SessionInfo) => this.sessions.archiveSession(session)}
+        .onArchiveSessionWithDescendants=${(session: SessionInfo) => this.sessions.archiveSessionWithDescendants(session)}
+        .onRestoreSession=${(session: SessionInfo) => openChatAfter(() => this.sessions.restoreSession(session))}
+        .onDeleteCachedNewSession=${(session: SessionInfo) => this.sessions.deleteCachedNewSession(session)}
+        .onDetachParentSession=${(session: SessionInfo) => this.sessions.detachParent(session)}
+      ></app-navigation-panel>
     `;
   }
 
-  private expandedNavigationSection(): NavigationSection | undefined {
-    if (this.expandedMobileNavigationSection === "none") return undefined;
-    return this.expandedMobileNavigationSection ?? this.defaultNavigationSection();
-  }
-
-  private defaultNavigationSection(): NavigationSection {
-    if (this.state.selectedProject === undefined) return "projects";
-    if (this.state.selectedWorkspace === undefined) return "workspaces";
-    return "sessions";
-  }
-
-  private isNavigationSectionCollapsed(section: NavigationSection): boolean {
-    return this.isMobileNavigationLayout && this.expandedNavigationSection() !== section;
-  }
-
-  private toggleNavigationSection(section: NavigationSection): void {
-    if (!this.isMobileNavigationLayout) return;
-    this.expandedMobileNavigationSection = this.expandedNavigationSection() === section ? "none" : section;
-  }
-
-  private expandNavigationSection(section: NavigationSection): void {
-    if (this.isMobileNavigationLayout) this.expandedMobileNavigationSection = section;
-  }
-
   private openNavigationSection(section: NavigationSection): void {
-    if (!this.isMobileNavigationLayout) return;
-    this.expandNavigationSection(section);
-    this.selectMainView("navigation");
+    this.mobileNavigation.open(section, () => { this.selectMainView("navigation"); });
   }
 
   private visibleWorkspacePanels(): QualifiedWorkspacePanelContribution[] {
@@ -1117,223 +937,51 @@ export class PiWebApp extends LitElement {
   }
 
   private renderContextBar() {
-    const project = this.state.selectedProject;
-    const workspace = this.state.selectedWorkspace;
-    const session = this.state.selectedSession;
-    const projectLabel = projectContextLabel(project);
-    const showRefresh = this.shouldShowAppRefreshInContextBar();
-    const workspaceLabel = workspaceContextLabel(workspace);
-    const sessionLabel = sessionContextLabel(session);
+    if (!this.appShell.isMobileNavigationLayout) return null;
     return html`
-      <nav class=${this.contextBarClass()} aria-label="Current location">
-        <span class="context-bar-label">Location</span>
-        <ol class="context-items" @scroll=${this.onContextScroll}>
-          <li class="context-item">
-            <button type="button" class=${project === undefined ? "context-chip empty" : "context-chip"} title=${projectContextTitle(project)} aria-label=${`Project: ${projectLabel}. Open project selection.`} @click=${() => { this.openNavigationSection("projects"); }}>
-              <span class="context-kind">Project</span>
-              <span class="context-value">${projectLabel}</span>
-            </button>
-          </li>
-          <li class="context-item">
-            <button type="button" class=${workspace === undefined ? "context-chip empty" : "context-chip"} title=${workspaceContextTitle(workspace)} aria-label=${`Workspace: ${workspaceLabel}. Open workspace selection.`} @click=${() => { this.openNavigationSection("workspaces"); }}>
-              <span class="context-kind">Workspace</span>
-              <span class="context-value">${workspaceLabel}</span>
-            </button>
-          </li>
-          <li class="context-item">
-            <button type="button" class=${session === undefined ? "context-chip empty" : "context-chip"} title=${sessionContextTitle(session)} aria-label=${`Session: ${sessionLabel}. Open session selection.`} @click=${() => { this.openNavigationSection("sessions"); }}>
-              <span class="context-kind">Session</span>
-              <span class="context-value">${sessionLabel}</span>
-            </button>
-          </li>
-        </ol>
-        ${showRefresh ? html`<div class="context-actions">${this.renderAppRefresh()}</div>` : null}
-      </nav>
+      <app-context-bar
+        .project=${this.state.selectedProject}
+        .workspace=${this.state.selectedWorkspace}
+        .session=${this.state.selectedSession}
+        .refreshControl=${this.appShell.shouldShowAppRefreshInContextBar() ? this.renderAppRefresh() : undefined}
+        .onOpenSection=${(section: NavigationSection) => { this.openNavigationSection(section); }}
+      ></app-context-bar>
     `;
   }
 
-  private contextBarClass(): string {
-    const classes = ["context-bar"];
-    if (this.shouldShowAppRefreshInContextBar()) classes.push("has-context-actions");
-    if (this.contextCanScrollLeft) classes.push("can-scroll-left");
-    if (this.contextCanScrollRight) classes.push("can-scroll-right");
-    return classes.join(" ");
+  private renderMobileMainTabs() {
+    return html`
+      <app-mobile-main-tabs
+        .tabs=${this.mobileMainTabs()}
+        .selectedView=${this.state.mainView}
+        .onSelect=${(view: AppState["mainView"]) => { this.selectMainView(view); }}
+      ></app-mobile-main-tabs>
+    `;
   }
 
-  private shouldShowAppRefreshInHeader(): boolean {
-    return this.isPwaDisplayMode && !this.isMobileNavigationLayout;
-  }
-
-  private shouldShowAppRefreshInContextBar(): boolean {
-    return this.isPwaDisplayMode && this.isMobileNavigationLayout;
-  }
-
-  private mobileTabsFrameClass(): string {
-    return `mobile-tabs-frame${this.mobileTabsCanScrollLeft ? " can-scroll-left" : ""}${this.mobileTabsCanScrollRight ? " can-scroll-right" : ""}`;
-  }
-
-  private observeContextItems(): void {
-    const contextItems = this.contextItemsElement();
-    if (this.observedContextItems === contextItems) return;
-    this.contextItemsResizeObserver?.disconnect();
-    this.observedContextItems = contextItems;
-    this.contextItemsResizeObserver = undefined;
-    if (contextItems === undefined || typeof ResizeObserver === "undefined") return;
-    this.contextItemsResizeObserver = new ResizeObserver(() => {
-      this.updateContextScrollState();
-    });
-    this.contextItemsResizeObserver.observe(contextItems);
-  }
-
-  private updateContextScrollState(): void {
-    const contextItems = this.contextItemsElement();
-    const maxScrollLeft = contextItems === undefined ? 0 : Math.max(0, contextItems.scrollWidth - contextItems.clientWidth);
-    const canScrollLeft = contextItems !== undefined && contextItems.scrollLeft > 1;
-    const canScrollRight = contextItems !== undefined && maxScrollLeft - contextItems.scrollLeft > 1;
-    if (this.contextCanScrollLeft !== canScrollLeft) this.contextCanScrollLeft = canScrollLeft;
-    if (this.contextCanScrollRight !== canScrollRight) this.contextCanScrollRight = canScrollRight;
-  }
-
-  private contextItemsElement(): HTMLElement | undefined {
-    const contextItems = this.contextItems;
-    return contextItems instanceof HTMLElement ? contextItems : undefined;
-  }
-
-  private observeMobileTabs(): void {
-    const mobileTabs = this.mobileTabsElement();
-    if (this.observedMobileTabs === mobileTabs) return;
-    this.mobileTabsResizeObserver?.disconnect();
-    this.observedMobileTabs = mobileTabs;
-    this.mobileTabsResizeObserver = undefined;
-    if (mobileTabs === undefined || typeof ResizeObserver === "undefined") return;
-    this.mobileTabsResizeObserver = new ResizeObserver(() => {
-      this.updateMobileTabsScrollState();
-    });
-    this.mobileTabsResizeObserver.observe(mobileTabs);
-  }
-
-  private updateMobileTabsScrollState(): void {
-    const mobileTabs = this.mobileTabsElement();
-    const maxScrollLeft = mobileTabs === undefined ? 0 : Math.max(0, mobileTabs.scrollWidth - mobileTabs.clientWidth);
-    const canScrollLeft = mobileTabs !== undefined && mobileTabs.scrollLeft > 1;
-    const canScrollRight = mobileTabs !== undefined && maxScrollLeft - mobileTabs.scrollLeft > 1;
-    if (this.mobileTabsCanScrollLeft !== canScrollLeft) this.mobileTabsCanScrollLeft = canScrollLeft;
-    if (this.mobileTabsCanScrollRight !== canScrollRight) this.mobileTabsCanScrollRight = canScrollRight;
-  }
-
-  private mobileTabsElement(): HTMLElement | undefined {
-    const mobileTabs = this.mobileTabs;
-    return mobileTabs instanceof HTMLElement ? mobileTabs : undefined;
-  }
-
-  private appRefreshElement(): HTMLElement | undefined {
-    const appRefresh = this.appRefresh;
-    return appRefresh instanceof HTMLElement ? appRefresh : undefined;
+  private mobileMainTabs(): AppMobileMainTab[] {
+    return [
+      { id: "navigation", label: "Sessions", className: "navigation-tab" },
+      { id: "chat", label: "Chat" },
+      ...this.visibleWorkspacePanels().map((panel): AppMobileMainTab => ({ id: panel.id, label: this.renderMobilePanelTitle(panel) })),
+    ];
   }
 
   private renderAppRefresh() {
-    const label = this.isRefreshingApp ? "Refreshing app data. Long-press for reload options." : "Refresh app data. Long-press for reload options.";
-    return html`
-      <div class="app-refresh">
-        <button
-          class=${`app-refresh-button${this.isRefreshingApp ? " refreshing" : ""}`}
-          title=${label}
-          aria-label=${label}
-          aria-haspopup="menu"
-          aria-expanded=${String(this.refreshMenuOpen)}
-          aria-busy=${String(this.isRefreshingApp)}
-          @click=${(event: MouseEvent) => { this.onRefreshClick(event); }}
-          @contextmenu=${(event: MouseEvent) => { this.onRefreshContextMenu(event); }}
-          @pointerdown=${(event: PointerEvent) => { this.onRefreshPointerDown(event); }}
-          @pointerup=${() => { this.clearRefreshLongPressTimer(); }}
-          @pointercancel=${() => { this.clearRefreshLongPressTimer(); }}
-          @pointerleave=${() => { this.clearRefreshLongPressTimer(); }}
-        >${this.renderRefreshIcon()}</button>
-      </div>
-    `;
-  }
-
-  private renderRefreshMenu() {
-    if (!this.refreshMenuOpen) return null;
-    return html`
-      <div class="app-refresh-menu" role="menu" style=${this.refreshMenuStyle} @click=${(event: MouseEvent) => { event.stopPropagation(); }}>
-        <button role="menuitem" @click=${() => { void this.refreshAppData(); }}>Refresh app data</button>
-        <button role="menuitem" @click=${() => { this.refreshMenuOpen = false; this.suppressNextRefreshClick = false; this.hardReloadApp(); }}>Full page reload</button>
-      </div>
-    `;
-  }
-
-  private renderRefreshIcon() {
-    return html`
-      <svg class="app-refresh-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M20 6v5h-5"></path>
-        <path d="M4 18v-5h5"></path>
-        <path d="M18.2 9A7 7 0 0 0 6.1 6.8L4 9"></path>
-        <path d="M5.8 15a7 7 0 0 0 12.1 2.2L20 15"></path>
-      </svg>
-    `;
-  }
-
-  private onRefreshClick(event: MouseEvent): void {
-    event.stopPropagation();
-    if (this.suppressNextRefreshClick) {
-      this.suppressNextRefreshClick = false;
-      return;
-    }
-    void this.refreshAppData();
-  }
-
-  private onRefreshPointerDown(event: PointerEvent): void {
-    if (!event.isPrimary || event.button !== 0) return;
-    const target = event.currentTarget;
-    if (!(target instanceof HTMLElement)) return;
-    this.clearRefreshLongPressTimer();
-    this.suppressNextRefreshClick = false;
-    this.refreshLongPressTimer = window.setTimeout(() => {
-      this.refreshLongPressTimer = undefined;
-      this.suppressNextRefreshClick = true;
-      this.openRefreshMenu(target);
-    }, REFRESH_LONG_PRESS_MS);
-  }
-
-  private onRefreshContextMenu(event: MouseEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.clearRefreshLongPressTimer();
-    this.suppressNextRefreshClick = true;
-    this.openRefreshMenu(event.currentTarget);
-  }
-
-  private openRefreshMenu(target: EventTarget | null): void {
-    this.refreshMenuStyle = actionMenuPanelStyle(target);
-    this.refreshMenuOpen = true;
-  }
-
-  private clearRefreshLongPressTimer(): void {
-    if (this.refreshLongPressTimer === undefined) return;
-    window.clearTimeout(this.refreshLongPressTimer);
-    this.refreshLongPressTimer = undefined;
+    return html`<app-refresh-control .isRefreshing=${this.isRefreshingApp} .onRefresh=${() => this.refreshAppData()} .onReload=${() => { this.hardReloadApp(); }}></app-refresh-control>`;
   }
 
   override render() {
     const state = this.state;
     return html`
-      <div class=${`shell ${state.mainView === "navigation" ? "navigation-view" : state.mainView === "chat" ? "chat-view" : "workspace-view"}${this.navigationPanelCollapsed ? " navigation-panel-collapsed" : ""}${this.workspacePanelCollapsed ? " workspace-panel-collapsed" : ""}`}>
-        <aside id="navigation-panel">${this.isMobileNavigationLayout ? null : this.renderNavigationPanel(false)}</aside>
+      <div class=${this.panelCollapse.shellClass(state.mainView)}>
+        <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigationPanel(false)}</aside>
         ${this.renderNavigationPanelEdgeControl()}
-        <main class=${state.mainView === "chat" ? "chat-view" : state.mainView === "navigation" ? "navigation-view" : "workspace-view"}>
+        <main class=${mainViewClass(state.mainView)}>
           ${this.renderContextBar()}
-          <div class=${this.mobileTabsFrameClass()}>
-            <div class="mobile-tabs" @scroll=${this.onMobileTabsScroll}>
-              <button class=${state.mainView === "navigation" ? "mobile-navigation-tab selected" : "mobile-navigation-tab"} @click=${() => { this.selectMainView("navigation"); }}>Sessions</button>
-              <button class=${state.mainView === "chat" ? "selected" : ""} @click=${() => { this.selectMainView("chat"); }}>Chat</button>
-              ${this.visibleWorkspacePanels().map((panel) => html`
-                <button class=${state.mainView === panel.id ? "selected" : ""} @click=${() => { this.openWorkspaceTool(panel.id); }}>${this.renderMobilePanelTitle(panel)}</button>
-              `)}
-            </div>
-          </div>
+          ${this.renderMobileMainTabs()}
           ${state.error ? html`<div class="error">${state.error}</div>` : null}
-          <div class="mobile-navigation-panel">${this.isMobileNavigationLayout ? this.renderNavigationPanel(true) : null}</div>
+          <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigationPanel(true) : null}</div>
           ${state.selectedSession ? html`
             <chat-view .sessionId=${state.selectedSession.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isReceivingPartialStream=${state.isReceivingPartialStream} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .status=${state.status} .activity=${state.activity} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())}></chat-view>
             <prompt-editor .sessionId=${state.selectedSession.id} .cwd=${state.selectedWorkspace?.path} .disabled=${state.selectedSession.archived === true} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .onSend=${(text: string, streamingBehavior?: "steer" | "followUp") => { this.sendPrompt(text, streamingBehavior); }} .onStop=${() => this.sessions.stopActiveWork()} .onSelectModel=${() => { void this.openModelDialog(); }} .onSelectThinking=${() => { void this.openThinkingDialog(); }}></prompt-editor>
@@ -1349,7 +997,6 @@ export class PiWebApp extends LitElement {
         ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
         ${state.projectDialogOpen ? html`<project-dialog .onSubmit=${(path: string, create: boolean) => this.projects.addProject(path, create)} .onCancel=${() => { this.setState({ projectDialogOpen: false }); }}></project-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
-        ${this.renderRefreshMenu()}
       </div>
     `;
   }
@@ -1362,32 +1009,6 @@ function createPluginRegistry(): PluginRegistry {
   registry.register({ id: "core", plugin: corePlugin });
   registry.register({ id: "themes", plugin: themePackPlugin });
   return registry;
-}
-
-function projectContextLabel(project: Project | undefined): string {
-  return project?.name ?? "No project";
-}
-
-function projectContextTitle(project: Project | undefined): string {
-  return project === undefined ? "No project selected" : `${project.name} — ${project.path}`;
-}
-
-function workspaceContextLabel(workspace: Workspace | undefined): string {
-  return workspace === undefined ? "No workspace" : `${workspace.label}${workspace.isMain ? " · main" : ""} · ${workspace.path}`;
-}
-
-function workspaceContextTitle(workspace: Workspace | undefined): string {
-  return workspace === undefined ? "No workspace selected" : `${workspace.label}${workspace.isMain ? " · main" : ""} — ${workspace.path}`;
-}
-
-function sessionContextLabel(session: SessionInfo | undefined): string {
-  const name = session?.name?.trim();
-  const firstMessage = session?.firstMessage.trim();
-  return name !== undefined && name !== "" ? name : firstMessage !== undefined && firstMessage !== "" ? firstMessage : session?.id.slice(0, 8) ?? "No session";
-}
-
-function sessionContextTitle(session: SessionInfo | undefined): string {
-  return session === undefined ? "No session selected" : session.path;
 }
 
 function patchChangesState(state: AppState, patch: Partial<AppState>): boolean {
