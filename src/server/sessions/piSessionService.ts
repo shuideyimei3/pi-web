@@ -34,6 +34,13 @@ function authLossWarningKey(sessionId: string, provider: string, modelId: string
   return `${sessionId}:${provider}/${modelId}`;
 }
 
+type QueuedPromptKind = "steer" | "followUp";
+
+interface QueuedPrompt {
+  kind: QueuedPromptKind;
+  text: string;
+}
+
 type SessionArchiveRepository = Pick<SessionArchiveStore, "list" | "get" | "archive" | "restore" | "isArchived">;
 interface PiSessionListEntry {
   id: string;
@@ -180,6 +187,8 @@ export class PiSessionService {
   private readonly activities = new Map<string, { phase: "active" | "idle" | "error"; label: string; detail?: string; at: string }>();
   private readonly heartbeat: NodeJS.Timeout;
   private readonly commandService: SessionCommandService<PiAgentSession>;
+  private readonly compactionPromptQueues = new Map<string, QueuedPrompt[]>();
+  private readonly compactionDrainTimers = new Map<string, NodeJS.Timeout>();
   private readonly authLossWarnings = new Set<string>();
   private readonly archiveStore: SessionArchiveRepository;
   private readonly agentDir: string;
@@ -222,9 +231,11 @@ export class PiSessionService {
 
   async dispose(): Promise<void> {
     clearInterval(this.heartbeat);
+    this.clearCompactionDrainTimers();
     const activeSessions = Array.from(new Set(this.active.values()));
     this.active.clear();
     this.activities.clear();
+    this.compactionPromptQueues.clear();
     this.authLossWarnings.clear();
     await Promise.all(activeSessions.map(async (active) => {
       active.unsubscribe();
@@ -355,18 +366,36 @@ export class PiSessionService {
     this.maybeGenerateSessionName(session, text);
     const isQueued = session.isStreaming || session.isCompacting;
     const behavior = isQueued ? streamingBehavior ?? "followUp" : undefined;
-    if (isQueued && hasQueuedMessageText(session, text)) {
+    if (isQueued && this.hasQueuedMessageText(session, text)) {
       this.publishActivity(session, "duplicate queued message ignored", "active");
       this.publishStatus(session);
       return;
     }
-    this.publishActivity(session, session.isCompacting ? "message queued during compaction" : behavior === "steer" ? "steering queued" : behavior === "followUp" ? "message queued" : "prompt accepted", "active");
-    if (!isQueued) this.events.publish(sessionId, { type: "message.append", message: userTextMessage(text) });
-    void session.prompt(text, behavior === undefined ? undefined : { streamingBehavior: behavior }).catch((error: unknown) => {
+    if (session.isCompacting) {
+      this.enqueuePromptDuringCompaction(session, text, behavior ?? "followUp");
+      return;
+    }
+    void this.submitPrompt(session, text, behavior);
+  }
+
+  private submitPrompt(session: PiAgentSession, text: string, behavior: QueuedPromptKind | undefined): Promise<void> {
+    this.publishActivity(session, behavior === "steer" ? "steering queued" : behavior === "followUp" ? "message queued" : "prompt accepted", "active");
+    if (behavior === undefined) this.events.publish(session.sessionId, { type: "message.append", message: userTextMessage(text) });
+    const promptPromise = session.prompt(text, behavior === undefined ? undefined : { streamingBehavior: behavior }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       this.publishActivity(session, "error", "error", message);
-      this.events.publish(sessionId, { type: "session.error", message });
+      this.events.publish(session.sessionId, { type: "session.error", message });
     });
+    void promptPromise;
+    return promptPromise;
+  }
+
+  private enqueuePromptDuringCompaction(session: PiAgentSession, text: string, kind: QueuedPromptKind): void {
+    const queue = this.compactionPromptQueues.get(session.sessionId) ?? [];
+    queue.push({ kind, text });
+    this.compactionPromptQueues.set(session.sessionId, queue);
+    this.publishActivity(session, "message queued during compaction", "active");
+    this.publishStatus(session);
   }
 
   async shell(sessionId: string, text: string): Promise<void> {
@@ -416,7 +445,7 @@ export class PiSessionService {
 
   async archive(sessionId: string): Promise<void> {
     const session = await this.getOrOpen(sessionId);
-    if (sessionHasActiveWork(session)) throw new Error("Stop current session activity before archiving");
+    if (this.hasActiveWork(session)) throw new Error("Stop current session activity before archiving");
     const archiveInput = await this.archiveInputForSession(session);
     await this.closeActive(session.sessionId);
     await this.archiveStore.archive(archiveInput);
@@ -427,7 +456,7 @@ export class PiSessionService {
     const catalog = await this.workspaceArchiveCandidates(session.sessionManager.getCwd());
     const root = findArchiveCandidateByIdOrPrefix(catalog, session.sessionId) ?? archiveCandidateFromActiveSession(session, false);
     const plan = planSessionArchiveTree(root, catalog);
-    const busy = plan.targets.map((target) => target.activeSession).find((target) => target !== undefined && sessionHasActiveWork(target));
+    const busy = plan.targets.map((target) => target.activeSession).find((target) => target !== undefined && this.hasActiveWork(target));
     if (busy !== undefined) throw new Error(`Stop current session activity before archiving ${sessionDisplayName(busy)}`);
 
     const archiveInputs = plan.unarchivedTargets.map((target) => archiveInputFromCandidate(target));
@@ -457,6 +486,7 @@ export class PiSessionService {
   async abort(sessionId: string): Promise<void> {
     const active = this.active.get(sessionId);
     if (!active) return;
+    this.clearCompactionPromptQueue(sessionId);
     clearSessionQueue(active.runtime.session);
     await active.runtime.session.abort();
     this.publishActivity(active.runtime.session, "stopped", "idle");
@@ -551,6 +581,7 @@ export class PiSessionService {
     this.activities.delete(sessionId);
     this.workspaceActivity?.removeSession(sessionId, active.runtime.session.sessionManager.getCwd());
     this.clearAuthLossWarningsForSession(sessionId);
+    this.clearCompactionPromptQueue(sessionId);
     clearSessionQueue(active.runtime.session);
     active.unsubscribe();
     try {
@@ -595,16 +626,82 @@ export class PiSessionService {
 
   private bindRuntime(active: ActiveSession<PiSessionRuntime>): void {
     active.unsubscribe();
-    for (const [sessionId, candidate] of this.active.entries()) {
-      if (candidate === active) this.active.delete(sessionId);
-    }
     const { session } = active.runtime;
+    for (const [sessionId, candidate] of this.active.entries()) {
+      if (candidate === active) {
+        this.active.delete(sessionId);
+        if (sessionId !== session.sessionId) this.clearCompactionPromptQueue(sessionId);
+      }
+    }
     active.unsubscribe = session.subscribe((event) => {
       this.events.publish(session.sessionId, toClientEvent(event));
       this.publishActivityForEvent(session, event);
+      const eventType = getString(event, "type");
+      if (eventType === "compaction_end") this.scheduleCompactionQueueDrain(session.sessionId);
+      if (eventType === "agent_start" || eventType === "agent_end") this.scheduleCompactionQueueDrain(session.sessionId);
       this.publishStatus(session);
     });
     this.active.set(session.sessionId, active);
+  }
+
+  private scheduleCompactionQueueDrain(sessionId: string, delayMs = 0): void {
+    if (!this.compactionPromptQueues.has(sessionId) || this.compactionDrainTimers.has(sessionId)) return;
+    const timer = setTimeout(() => {
+      this.compactionDrainTimers.delete(sessionId);
+      this.drainCompactionPromptQueue(sessionId);
+    }, delayMs);
+    this.compactionDrainTimers.set(sessionId, timer);
+  }
+
+  private drainCompactionPromptQueue(sessionId: string): void {
+    const active = this.active.get(sessionId);
+    if (active === undefined) return;
+    const { session } = active.runtime;
+    if (session.isCompacting) {
+      this.scheduleCompactionQueueDrain(sessionId, 100);
+      return;
+    }
+
+    if (session.isStreaming) {
+      const queued = this.takeCompactionPromptQueue(sessionId);
+      if (queued.length === 0) return;
+      this.publishStatus(session);
+      for (const prompt of queued) void this.submitPrompt(session, prompt.text, prompt.kind);
+      return;
+    }
+
+    const prompt = this.shiftCompactionPrompt(sessionId);
+    if (prompt === undefined) return;
+    this.publishStatus(session);
+    const submitted = this.submitPrompt(session, prompt.text, undefined);
+    void submitted.finally(() => { this.scheduleCompactionQueueDrain(sessionId); });
+  }
+
+  private takeCompactionPromptQueue(sessionId: string): QueuedPrompt[] {
+    const queued = this.compactionPromptQueues.get(sessionId) ?? [];
+    this.compactionPromptQueues.delete(sessionId);
+    return queued;
+  }
+
+  private shiftCompactionPrompt(sessionId: string): QueuedPrompt | undefined {
+    const queue = this.compactionPromptQueues.get(sessionId);
+    const prompt = queue?.shift();
+    if (queue === undefined || queue.length === 0) this.compactionPromptQueues.delete(sessionId);
+    return prompt;
+  }
+
+  private clearCompactionPromptQueue(sessionId: string): void {
+    this.compactionPromptQueues.delete(sessionId);
+    const timer = this.compactionDrainTimers.get(sessionId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.compactionDrainTimers.delete(sessionId);
+    }
+  }
+
+  private clearCompactionDrainTimers(): void {
+    for (const timer of this.compactionDrainTimers.values()) clearTimeout(timer);
+    this.compactionDrainTimers.clear();
   }
 
   private maybeGenerateSessionName(session: PiAgentSession, firstMessage: string): void {
@@ -674,7 +771,7 @@ export class PiSessionService {
     for (const active of this.active.values()) {
       const { session } = active.runtime;
       const activity = this.activities.get(session.sessionId);
-      if (!sessionHasActiveWork(session)) {
+      if (!this.hasActiveWork(session)) {
         if (activity?.phase === "active") this.publishStatus(session);
         continue;
       }
@@ -688,8 +785,12 @@ export class PiSessionService {
     if (session.isCompacting) return "compacting";
     if (session.isBashRunning) return "running bash";
     if (session.isStreaming) return "agent running";
-    if (session.pendingMessageCount) return "queued";
+    if (this.pendingMessageCount(session) > 0) return "queued";
     return "active";
+  }
+
+  private hasActiveWork(session: PiAgentSession): boolean {
+    return sessionHasActiveWork(session, this.compactionQueuedMessages(session.sessionId).length);
   }
 
   private publishActivityForEvent(session: PiAgentSession, event: unknown): void {
@@ -716,7 +817,7 @@ export class PiSessionService {
     }
     if (eventType === "bash_execution_start") { this.publishActivity(session, "running bash", "active"); return; }
     if (eventType === "bash_execution_end") { this.publishActivity(session, "bash complete", "idle"); return; }
-    if (sessionHasActiveWork(session)) this.publishActivity(session, eventType.replaceAll("_", " "), "active");
+    if (this.hasActiveWork(session)) this.publishActivity(session, eventType.replaceAll("_", " "), "active");
   }
 
   private publishActivity(session: PiAgentSession, label: string, phase: "active" | "idle" | "error", detail?: string): void {
@@ -739,7 +840,7 @@ export class PiSessionService {
 
   private clearStaleActiveActivity(session: PiAgentSession): void {
     const current = this.activities.get(session.sessionId);
-    if (current?.phase !== "active" || sessionHasActiveWork(session)) return;
+    if (current?.phase !== "active" || this.hasActiveWork(session)) return;
     const at = new Date().toISOString();
     const stored = { phase: "idle" as const, label: "idle", at };
     this.activities.set(session.sessionId, stored);
@@ -759,13 +860,25 @@ export class PiSessionService {
       isStreaming: session.isStreaming,
       isCompacting: session.isCompacting,
       isBashRunning: session.isBashRunning,
-      pendingMessageCount: session.pendingMessageCount,
-      queuedMessages: queuedMessagesFromSession(session),
+      pendingMessageCount: this.pendingMessageCount(session),
+      queuedMessages: queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId)),
       messageCount: session.messages.length,
       tokens: stats.tokens,
       cost: stats.cost,
       ...(contextUsage === undefined ? {} : { contextUsage }),
     };
+  }
+
+  private pendingMessageCount(session: PiAgentSession): number {
+    return session.pendingMessageCount + this.compactionQueuedMessages(session.sessionId).length;
+  }
+
+  private compactionQueuedMessages(sessionId: string): readonly QueuedPrompt[] {
+    return this.compactionPromptQueues.get(sessionId) ?? [];
+  }
+
+  private hasQueuedMessageText(session: PiAgentSession, text: string): boolean {
+    return queuedMessagesFromSession(session, this.compactionQueuedMessages(session.sessionId)).some((message) => message.text === text);
   }
 }
 
@@ -872,8 +985,8 @@ function archiveInputFromCandidate(candidate: WorkspaceArchiveCandidate): Archiv
   throw new Error(`Session is not available for archiving: ${candidate.id}`);
 }
 
-function sessionHasActiveWork(session: PiAgentSession): boolean {
-  return session.isStreaming || session.isCompacting || session.isBashRunning || session.pendingMessageCount > 0;
+function sessionHasActiveWork(session: PiAgentSession, extraQueuedMessageCount = 0): boolean {
+  return session.isStreaming || session.isCompacting || session.isBashRunning || session.pendingMessageCount + extraQueuedMessageCount > 0;
 }
 
 function sessionDisplayName(session: PiAgentSession): string {
@@ -938,14 +1051,11 @@ function clearSessionQueue(session: PiAgentSession): void {
   session.clearQueue();
 }
 
-function hasQueuedMessageText(session: PiAgentSession, text: string): boolean {
-  return queuedMessagesFromSession(session).some((message) => message.text === text);
-}
-
-function queuedMessagesFromSession(session: PiAgentSession): { kind: "steer" | "followUp"; text: string }[] {
+function queuedMessagesFromSession(session: PiAgentSession, extraQueuedMessages: readonly QueuedPrompt[] = []): { kind: "steer" | "followUp"; text: string }[] {
   return [
     ...session.getSteeringMessages().map((text) => ({ kind: "steer" as const, text })),
     ...session.getFollowUpMessages().map((text) => ({ kind: "followUp" as const, text })),
+    ...extraQueuedMessages,
   ];
 }
 

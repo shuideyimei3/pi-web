@@ -45,6 +45,7 @@ function sessionRecord(id: string, cwd = "/workspace") {
 
 function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession> = {}) {
   const promptCalls: { text: string; options: unknown }[] = [];
+  const listeners: ((event: unknown) => void)[] = [];
   const calls = { abort: 0, clearQueue: 0, dispose: 0, prompt: promptCalls };
   const session: TestSession = {
     sessionId,
@@ -63,7 +64,13 @@ function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession> = {}) 
     extensionRunner: { getRegisteredCommands: () => [] },
     promptTemplates: [],
     resourceLoader: { getSkills: () => ({ skills: [] }) },
-    subscribe: () => () => undefined,
+    subscribe: (listener: (event: unknown) => void) => {
+      listeners.push(listener);
+      return () => {
+        const index = listeners.indexOf(listener);
+        if (index !== -1) listeners.splice(index, 1);
+      };
+    },
     getSessionStats: () => ({ sessionId, totalMessages: 0, userMessages: 0, assistantMessages: 0, toolCalls: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }, cost: 0 }),
     getContextUsage: () => undefined,
     prompt: (text: string, options: unknown) => {
@@ -101,7 +108,7 @@ function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession> = {}) 
       return Promise.resolve();
     },
   };
-  return { runtime, session, calls };
+  return { runtime, session, calls, emit: (event: unknown) => { for (const listener of [...listeners]) listener(event); } };
 }
 
 function runtimeCreator(runtime: PiSessionRuntime): RuntimeCreator {
@@ -414,6 +421,60 @@ describe("PiSessionService", () => {
     await service.dispose();
   });
 
+  it("holds prompts sent during compaction until compaction finishes", async () => {
+    const hub = new CapturingSessionEventHub();
+    const fake = fakeRuntime("compacting-session", { isCompacting: true });
+    let resolveFirstPrompt: (() => void) | undefined;
+    fake.session.prompt = (text: string, options?: { streamingBehavior?: "steer" | "followUp" }) => {
+      fake.calls.prompt.push({ text, options });
+      if (options === undefined) {
+        fake.session.isStreaming = true;
+        return new Promise<void>((resolve) => { resolveFirstPrompt = resolve; });
+      }
+      return Promise.resolve();
+    };
+    const service = new PiSessionService(hub, {
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("compacting-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+
+    await service.prompt("compacting-session", "Start task 1", "followUp");
+    await service.prompt("compacting-session", "Then task 2", "followUp");
+
+    expect(fake.calls.prompt).toEqual([]);
+    expect(hub.sessionEvents.some(({ event }) => event.type === "message.append")).toBe(false);
+    await expect(service.status("compacting-session")).resolves.toMatchObject({
+      pendingMessageCount: 2,
+      queuedMessages: [{ kind: "followUp", text: "Start task 1" }, { kind: "followUp", text: "Then task 2" }],
+    });
+
+    fake.session.isCompacting = false;
+    fake.emit({ type: "compaction_end" });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    expect(fake.calls.prompt).toEqual([{ text: "Start task 1", options: undefined }]);
+    expect(hub.sessionEvents.some(({ event }) => event.type === "message.append" && JSON.stringify(event.message).includes("Start task 1"))).toBe(true);
+    await expect(service.status("compacting-session")).resolves.toMatchObject({
+      pendingMessageCount: 1,
+      queuedMessages: [{ kind: "followUp", text: "Then task 2" }],
+    });
+
+    fake.emit({ type: "agent_start" });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    expect(fake.calls.prompt).toEqual([
+      { text: "Start task 1", options: undefined },
+      { text: "Then task 2", options: { streamingBehavior: "followUp" } },
+    ]);
+    await expect(service.status("compacting-session")).resolves.toMatchObject({
+      pendingMessageCount: 0,
+      queuedMessages: [],
+    });
+    resolveFirstPrompt?.();
+    await service.dispose();
+  });
+
   it("clears queued messages when aborting active work", async () => {
     const fake = fakeRuntime("abort-session");
     const service = new PiSessionService(new CapturingSessionEventHub(), {
@@ -427,6 +488,24 @@ describe("PiSessionService", () => {
 
     expect(fake.calls.clearQueue).toBe(1);
     expect(fake.calls.abort).toBe(1);
+    await service.dispose();
+  });
+
+  it("clears prompts queued during compaction when aborting active work", async () => {
+    const fake = fakeRuntime("abort-compaction-session", { isCompacting: true });
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      sessionManager: sessionGateway([sessionRecord("abort-compaction-session")]),
+      heartbeatIntervalMs: 60_000,
+    });
+
+    await service.prompt("abort-compaction-session", "Do not deliver after abort", "followUp");
+    await expect(service.status("abort-compaction-session")).resolves.toMatchObject({ pendingMessageCount: 1 });
+    await service.abort("abort-compaction-session");
+
+    expect(fake.calls.clearQueue).toBe(1);
+    expect(fake.calls.prompt).toEqual([]);
+    await expect(service.status("abort-compaction-session")).resolves.toMatchObject({ pendingMessageCount: 0, queuedMessages: [] });
     await service.dispose();
   });
 
