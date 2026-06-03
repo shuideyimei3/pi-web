@@ -18,9 +18,9 @@ afterEach(async () => {
 
 describe("PI WEB config persistence", () => {
   it("writes and reads the configured PI WEB config path", () => {
-    const saved = savePiWebConfig({ host: "0.0.0.0", port: 9000, allowedHosts: ["example.local"] }, testOptions());
+    const saved = savePiWebConfig({ host: "0.0.0.0", port: 9000, allowedHosts: ["example.local"], shortcuts: { "core:view.chat": "mod+1", "core:session.stop": null } }, testOptions());
 
-    expect(saved).toEqual({ path: configPath, exists: true, config: { host: "0.0.0.0", port: 9000, allowedHosts: ["example.local"] } });
+    expect(saved).toEqual({ path: configPath, exists: true, config: { host: "0.0.0.0", port: 9000, allowedHosts: ["example.local"], shortcuts: { "core:view.chat": "mod+1", "core:session.stop": null } } });
     expect(loadPiWebConfig(testOptions())).toEqual(saved);
   });
 

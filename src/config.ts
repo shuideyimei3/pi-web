@@ -74,6 +74,7 @@ export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}):
   delete existing["host"];
   delete existing["port"];
   delete existing["allowedHosts"];
+  delete existing["shortcuts"];
   const merged = { ...existing, ...piWebConfigRecord(normalized) };
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
@@ -92,6 +93,7 @@ function piWebConfigRecord(config: PiWebConfig): Record<string, unknown> {
     ...(config.host !== undefined ? { host: config.host } : {}),
     ...(config.port !== undefined ? { port: config.port } : {}),
     ...(config.allowedHosts !== undefined ? { allowedHosts: config.allowedHosts } : {}),
+    ...(config.shortcuts !== undefined ? { shortcuts: config.shortcuts } : {}),
   };
 }
 
@@ -100,6 +102,7 @@ function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebCo
     ...(value["host"] !== undefined ? { host: parseString(value["host"], "host", path) } : {}),
     ...(value["port"] !== undefined ? { port: parsePort(value["port"], "port", path) } : {}),
     ...(value["allowedHosts"] !== undefined ? { allowedHosts: parseAllowedHosts(value["allowedHosts"], path) } : {}),
+    ...(value["shortcuts"] !== undefined ? { shortcuts: parseShortcuts(value["shortcuts"], path) } : {}),
   };
 }
 
@@ -125,6 +128,16 @@ function parseAllowedHosts(value: unknown, path: string): string[] | true {
 function parseAllowedHostsEnv(value: string): string[] | true {
   if (value === "true") return true;
   return value.split(",").map((host) => host.trim()).filter((host) => host !== "");
+}
+
+function parseShortcuts(value: unknown, path: string): Record<string, string | null> {
+  if (!isRecord(value)) throw new Error(`PI WEB config shortcuts must be an object: ${path}`);
+  return Object.fromEntries(Object.entries(value).map(([actionId, shortcut]) => {
+    if (shortcut !== null && (typeof shortcut !== "string" || shortcut === "")) {
+      throw new Error(`PI WEB config shortcut values must be non-empty strings or null: ${path}`);
+    }
+    return [actionId, shortcut];
+  }));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

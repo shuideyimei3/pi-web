@@ -37,11 +37,11 @@ describe("config routes", () => {
     const response = await app.inject({
       method: "PUT",
       url: "/api/config",
-      payload: { config: { host: "0.0.0.0", port: 9000, allowedHosts: true } },
+      payload: { config: { host: "0.0.0.0", port: 9000, allowedHosts: true, shortcuts: { "core:view.chat": "mod+1", "core:session.stop": null } } },
     });
 
     expect(response.statusCode).toBe(200);
-    expect(savedConfig).toEqual({ host: "0.0.0.0", port: 9000, allowedHosts: true });
+    expect(savedConfig).toEqual({ host: "0.0.0.0", port: 9000, allowedHosts: true, shortcuts: { "core:view.chat": "mod+1", "core:session.stop": null } });
     expect(response.json<PiWebConfigResponse>().config).toEqual(savedConfig);
   });
 

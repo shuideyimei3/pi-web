@@ -6,13 +6,13 @@ describe("API parsers", () => {
     expect(parsePiWebConfigResponse({
       path: "/tmp/config.json",
       exists: true,
-      config: { host: "0.0.0.0", port: 8504, allowedHosts: ["example.local"] },
+      config: { host: "0.0.0.0", port: 8504, allowedHosts: ["example.local"], shortcuts: { "core:view.chat": "mod+1", "core:session.stop": null } },
       effectiveConfig: { host: "127.0.0.1", port: 8504, allowedHosts: true },
       envOverrides: { host: true, port: false, allowedHosts: false },
     })).toEqual({
       path: "/tmp/config.json",
       exists: true,
-      config: { host: "0.0.0.0", port: 8504, allowedHosts: ["example.local"] },
+      config: { host: "0.0.0.0", port: 8504, allowedHosts: ["example.local"], shortcuts: { "core:view.chat": "mod+1", "core:session.stop": null } },
       effectiveConfig: { host: "127.0.0.1", port: 8504, allowedHosts: true },
       envOverrides: { host: true, port: false, allowedHosts: false },
     });

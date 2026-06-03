@@ -55,6 +55,7 @@ function parseConfigRequest(value: unknown): PiWebConfig {
   const host = value["host"];
   const port = value["port"];
   const allowedHosts = value["allowedHosts"];
+  const shortcuts = value["shortcuts"];
   if (host !== undefined) {
     if (typeof host !== "string") throw new Error("PI WEB config host must be a string");
     config.host = host;
@@ -64,6 +65,7 @@ function parseConfigRequest(value: unknown): PiWebConfig {
     config.port = port;
   }
   if (allowedHosts !== undefined) config.allowedHosts = parseAllowedHostsRequest(allowedHosts);
+  if (shortcuts !== undefined) config.shortcuts = parseShortcutsRequest(shortcuts);
   return config;
 }
 
@@ -73,6 +75,14 @@ function parseAllowedHostsRequest(value: unknown): string[] | true {
     throw new Error("PI WEB config allowedHosts must be true or an array of strings");
   }
   return value;
+}
+
+function parseShortcutsRequest(value: unknown): Record<string, string | null> {
+  if (!isRecord(value)) throw new Error("PI WEB config shortcuts must be an object");
+  return Object.fromEntries(Object.entries(value).map(([actionId, shortcut]) => {
+    if (shortcut !== null && (typeof shortcut !== "string" || shortcut === "")) throw new Error("PI WEB config shortcut values must be non-empty strings or null");
+    return [actionId, shortcut];
+  }));
 }
 
 function piWebConfigEnvOverrides(env: NodeJS.ProcessEnv): PiWebConfigEnvOverrides {

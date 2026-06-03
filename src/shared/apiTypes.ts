@@ -1,7 +1,10 @@
+export type PiWebShortcutConfig = Record<string, string | null>;
+
 export interface PiWebConfigValues {
   host?: string;
   port?: number;
   allowedHosts?: string[] | true;
+  shortcuts?: PiWebShortcutConfig;
 }
 
 export interface PiWebConfigEnvOverrides {

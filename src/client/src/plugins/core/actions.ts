@@ -55,7 +55,7 @@ export function createCoreActions(): PluginAction[] {
       description: "Manage PI WEB configuration and keyboard shortcuts",
       shortcut: "mod+,",
       group: "Preferences",
-      run: (context) => { context.openSettings(); },
+      run: (context) => { context.piWebInternal?.openSettings?.(); },
     },
     {
       id: "app.refresh-data",

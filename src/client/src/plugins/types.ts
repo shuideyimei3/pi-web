@@ -39,6 +39,7 @@ export interface PluginContributions {
 
 export interface PiWebInternalRuntimeContext {
   terminalCommandRuns: TerminalCommandRunsInternalRuntime;
+  openSettings?: (section?: SettingsSection) => void;
 }
 
 export interface TerminalCommandRunsInternalRuntime {
@@ -57,7 +58,6 @@ export interface PluginRuntimeContext {
   configureAuth: () => void | Promise<void>;
   logoutAuth: () => void | Promise<void>;
   openThemePicker: () => void;
-  openSettings: (section?: SettingsSection) => void;
   selectMainView: (view: AppState["mainView"]) => void;
   selectWorkspaceTool: (tool: QualifiedContributionId) => void;
   openTerminal: (options?: { terminalId?: string | undefined }) => void;

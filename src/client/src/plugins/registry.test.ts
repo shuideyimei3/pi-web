@@ -18,6 +18,7 @@ function createContext(statePatch: Partial<AppState> = {}) {
         getCommandRun: vi.fn(),
         open: vi.fn((options?: { terminalId?: string | undefined }) => { calls.push(`terminal.open:${options?.terminalId ?? ""}`); }),
       },
+      openSettings: vi.fn(() => { calls.push("openSettings"); }),
     },
     openActionPalette: vi.fn(() => { calls.push("openActionPalette"); }),
     focusPrompt: vi.fn(() => { calls.push("focusPrompt"); }),
@@ -25,7 +26,6 @@ function createContext(statePatch: Partial<AppState> = {}) {
     configureAuth: vi.fn(() => { calls.push("configureAuth"); }),
     logoutAuth: vi.fn(() => { calls.push("logoutAuth"); }),
     openThemePicker: vi.fn(() => { calls.push("openThemePicker"); }),
-    openSettings: vi.fn(() => { calls.push("openSettings"); }),
     selectMainView: vi.fn((view: AppState["mainView"]) => { calls.push(`selectMainView:${view}`); }),
     selectWorkspaceTool: vi.fn((tool: AppState["workspaceTool"]) => { calls.push(`selectWorkspaceTool:${tool}`); }),
     openTerminal: vi.fn((options?: { terminalId?: string | undefined }) => { calls.push(`openTerminal:${options?.terminalId ?? ""}`); }),
@@ -143,7 +143,7 @@ describe("PluginRegistry", () => {
     expect(calls).toEqual(["refreshGit"]);
   });
 
-  it("routes app refresh and reload actions through the runtime context", () => {
+  it("routes app refresh, reload, and settings actions through the runtime context", () => {
     const registry = new PluginRegistry();
     registry.register({ id: "core", plugin: corePlugin });
     const { context, calls } = createContext();
@@ -151,8 +151,9 @@ describe("PluginRegistry", () => {
 
     void actions.find((candidate) => candidate.id === "core:app.refresh-data")?.run();
     void actions.find((candidate) => candidate.id === "core:app.reload-page")?.run();
+    void actions.find((candidate) => candidate.id === "core:settings.open")?.run();
 
-    expect(calls).toEqual(["refreshAppData", "reloadPage"]);
+    expect(calls).toEqual(["refreshAppData", "reloadPage", "openSettings"]);
   });
 
   it("exposes terminal navigation as a shortcut-backed action", () => {

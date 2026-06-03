@@ -1,6 +1,6 @@
 import { LitElement, html } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
-import { piWebApi, terminalsApi, type Project, type RealtimeEvent, type SessionInfo, type TerminalCommandRun, type TerminalUiEvent, type ThinkingLevel, type Workspace } from "../api";
+import { configApi, piWebApi, terminalsApi, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type RealtimeEvent, type SessionInfo, type TerminalCommandRun, type TerminalUiEvent, type ThinkingLevel, type Workspace } from "../api";
 import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
@@ -26,6 +26,7 @@ import { MobileNavigationController, type NavigationSection } from "../appShell/
 import { PanelCollapseController, mainViewClass } from "../appShell/panelCollapseController";
 import { readRoute, writeRoute, type AppRoute } from "../route";
 import { readSettingsSection, writeSettingsSection, type SettingsSection } from "../settingsRoute";
+import { applyShortcutPreferences } from "../shortcutPreferences";
 import { createTerminalCommandRunsRuntime } from "../runtime/terminalRuntime";
 import { isWorkspaceDeletionPending, isWorkspaceDeletionRunPending, latestWorkspaceDeletionRuns, pendingWorkspaceDeletionIds, targetWorkspaceIdForRun, workspaceDeletionMetadata, workspaceDeletionRunFilter } from "../workspaceDeletion";
 import "./ProjectList";
@@ -124,6 +125,7 @@ export class PiWebApp extends LitElement {
   @state() private activeThemeId: QualifiedContributionId = CLASSIC_THEME_ID;
   @state() private isRefreshingApp = false;
   @state() private settingsSection: SettingsSection | undefined = readSettingsSection();
+  @state() private shortcutConfig: PiWebShortcutConfig = {};
   private readonly onPopState = () => void this.withChatScrollTransition(async () => {
     this.restoreSettingsRoute();
     await this.restoreRoute(false);
@@ -174,6 +176,7 @@ export class PiWebApp extends LitElement {
     this.piWebStatusTimer = window.setInterval(() => { void this.refreshPiWebStatus(); }, PI_WEB_STATUS_REFRESH_MS);
     void this.refreshPiWebStatus();
     void this.refreshWorkspaceActivity();
+    void this.loadClientConfig();
     void this.loadExternalPlugins();
     void this.loadProjectsAndRestoreRoute();
   }
@@ -228,6 +231,18 @@ export class PiWebApp extends LitElement {
     }
   }
 
+  private async loadClientConfig(): Promise<void> {
+    try {
+      this.applyClientConfig((await configApi.config()).config);
+    } catch (error) {
+      console.warn("Failed to load PI WEB config", error);
+    }
+  }
+
+  private applyClientConfig(config: PiWebConfigValues): void {
+    this.shortcutConfig = config.shortcuts ?? {};
+  }
+
   private async refreshAppData(): Promise<void> {
     if (this.isRefreshingApp) return;
     this.isRefreshingApp = true;
@@ -236,6 +251,7 @@ export class PiWebApp extends LitElement {
         this.sessions.refreshSelectedSession(),
         this.refreshPiWebStatus(),
         this.refreshWorkspaceActivity(),
+        this.loadClientConfig(),
         this.refreshWorkspaceDeletionRuns(),
         this.refreshCurrentWorkspaceSurface(),
       ]);
@@ -672,7 +688,7 @@ export class PiWebApp extends LitElement {
   }
 
   private getActions(): AppAction[] {
-    return this.plugins.getActions(this.createPluginRuntimeContext());
+    return applyShortcutPreferences(this.plugins.getActions(this.createPluginRuntimeContext()), this.shortcutConfig);
   }
 
   private async loadExternalPlugins(): Promise<void> {
@@ -695,14 +711,16 @@ export class PiWebApp extends LitElement {
   private createPluginRuntimeContext(): PluginRuntimeContext {
     const createContext = (origin: string): PluginRuntimeContext => installPluginRuntimeScope({
       state: this.state,
-      piWebInternal: { terminalCommandRuns: this.terminalCommandRunsForOrigin(origin) },
+      piWebInternal: {
+        terminalCommandRuns: this.terminalCommandRunsForOrigin(origin),
+        openSettings: (section) => { this.openSettings(section); },
+      },
       openActionPalette: () => { this.setState({ actionPaletteOpen: true }); },
       focusPrompt: () => { this.promptEditor?.focusInput(); },
       addProject: () => { this.setState({ projectDialogOpen: true }); },
       configureAuth: () => this.auth.openLogin(),
       logoutAuth: () => this.auth.openLogout(),
       openThemePicker: () => { this.openThemeDialog(); },
-      openSettings: (section) => { this.openSettings(section); },
       selectMainView: (view) => { this.selectMainView(view); },
       selectWorkspaceTool: (tool) => { this.openWorkspaceTool(tool); },
       openTerminal: (options) => { this.openTerminal(options); },
@@ -1029,7 +1047,7 @@ export class PiWebApp extends LitElement {
         ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
         ${state.projectDialogOpen ? html`<project-dialog .onSubmit=${(path: string, create: boolean) => this.projects.addProject(path, create)} .onCancel=${() => { this.setState({ projectDialogOpen: false }); }}></project-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
-        ${this.settingsSection !== undefined ? html`<settings-dialog .section=${this.settingsSection} .actions=${this.getActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onClose=${() => { this.closeSettings(); }}></settings-dialog>` : null}
+        ${this.settingsSection !== undefined ? html`<settings-dialog .section=${this.settingsSection} .actions=${this.getActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }}></settings-dialog>` : null}
       </div>
     `;
   }
