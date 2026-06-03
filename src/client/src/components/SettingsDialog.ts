@@ -1,9 +1,10 @@
 import { css, html, LitElement, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { AppAction } from "../actions";
-import { configApi, type PiWebConfigResponse, type PiWebConfigValues } from "../api";
+import { configApi, pluginsApi, type PiWebConfigResponse, type PiWebConfigValues, type PiWebPluginsResponse } from "../api";
 import type { SettingsSection } from "../settingsRoute";
 import "./settings/SettingsGeneralPanel";
+import "./settings/SettingsPluginsPanel";
 import "./settings/SettingsShortcutsPanel";
 
 @customElement("settings-dialog")
@@ -14,6 +15,7 @@ export class SettingsDialog extends LitElement {
   @property({ attribute: false }) onClose?: () => void;
   @property({ attribute: false }) onConfigSaved?: (config: PiWebConfigValues) => void;
   @state() private configResponse: PiWebConfigResponse | undefined;
+  @state() private pluginsResponse: PiWebPluginsResponse | undefined;
   @state() private loading = true;
   @state() private saving = false;
   @state() private error = "";
@@ -45,6 +47,7 @@ export class SettingsDialog extends LitElement {
           <div class="settings-body">
             <nav class="settings-nav" aria-label="Settings sections">
               ${this.renderNavButton("general", "General", "Server config")}
+              ${this.renderNavButton("plugins", "Plugins", "Enable and disable")}
               ${this.renderNavButton("shortcuts", "Keyboard", "Shortcuts")}
             </nav>
             <main class="settings-content">
@@ -59,6 +62,20 @@ export class SettingsDialog extends LitElement {
   private renderActiveSection(): TemplateResult {
     if (this.section === "shortcuts") {
       return html`<settings-shortcuts-panel .actions=${this.actions} .configResponse=${this.configResponse}></settings-shortcuts-panel>`;
+    }
+    if (this.section === "plugins") {
+      return html`
+        <settings-plugins-panel
+          .configResponse=${this.configResponse}
+          .pluginsResponse=${this.pluginsResponse}
+          .loading=${this.loading}
+          .saving=${this.saving}
+          .error=${this.error}
+          .savedMessage=${this.savedMessage}
+          .onReload=${() => this.loadConfig()}
+          .onTogglePlugin=${(pluginId: string, enabled: boolean) => this.togglePlugin(pluginId, enabled)}
+        ></settings-plugins-panel>
+      `;
     }
     return html`
       <settings-general-panel
@@ -91,12 +108,28 @@ export class SettingsDialog extends LitElement {
     this.loading = true;
     this.error = "";
     try {
-      this.configResponse = await configApi.config();
+      const [config, plugins] = await Promise.all([configApi.config(), pluginsApi.plugins()]);
+      this.configResponse = config;
+      this.pluginsResponse = plugins;
     } catch (error) {
-      this.error = `Failed to load config: ${errorMessage(error)}`;
+      this.error = `Failed to load settings: ${errorMessage(error)}`;
     } finally {
       this.loading = false;
     }
+  }
+
+  private async togglePlugin(pluginId: string, enabled: boolean): Promise<void> {
+    const baseConfig = this.configResponse?.config ?? {};
+    const currentPlugins = baseConfig.plugins ?? {};
+    const currentPluginConfig = currentPlugins[pluginId] ?? {};
+    await this.saveConfig({
+      ...baseConfig,
+      plugins: {
+        ...currentPlugins,
+        [pluginId]: { ...currentPluginConfig, enabled },
+      },
+    });
+    await this.refreshPlugins();
   }
 
   private async saveConfig(config: PiWebConfigValues): Promise<void> {
@@ -113,6 +146,14 @@ export class SettingsDialog extends LitElement {
       this.error = `Failed to save config: ${errorMessage(error)}`;
     } finally {
       this.saving = false;
+    }
+  }
+
+  private async refreshPlugins(): Promise<void> {
+    try {
+      this.pluginsResponse = await pluginsApi.plugins();
+    } catch (error) {
+      this.error = `Failed to refresh plugins: ${errorMessage(error)}`;
     }
   }
 

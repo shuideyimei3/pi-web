@@ -127,26 +127,90 @@ ln -s /path/to/plugin-folder ~/.pi-web/plugins/plugin-id
 
 Reload the PI WEB browser tab. PI WEB serves plugin modules with an mtime-based `?v=` cache buster. After editing a plugin, hard reload the browser if you do not see changes.
 
-## First-party separate plugin packages
+## Manage plugins
 
-First-party plugins that are published as their own npm packages can live in this repository under `plugins/*` as npm workspaces. These packages are **not bundled** into the main `@jmfederico/pi-web` npm package automatically; they are separate packages that share CI, tests, and local development tooling with the main repo.
+Open **Settings → Plugins** to review discovered bundled, local, dev, and Pi package plugins. PI WEB can disable any discovered plugin before the browser imports it. Core app contributions such as the built-in command palette, base workspace tools, and themes are not managed through this plugin list.
 
-A separate plugin package should:
+Plugin preferences are stored under the top-level `plugins` config key in the PI WEB config file:
 
-- use type-only imports from `@jmfederico/pi-web/plugin-api` when it needs shared PI WEB plugin interfaces; this subpath is currently a `.d.ts`-only dogfooding surface, not a runtime JavaScript module;
-- keep its PI WEB metadata in its own `package.json` with `piWeb.plugins` entries pointing at built JavaScript in `dist/`;
-- include a package-level `build` script and `prepack` script so `npm pack --workspace <package>` and `npm publish --workspace <package>` produce a usable plugin package;
-- use a local symlink into `~/.pi-web/plugins/<plugin-id>` while developing;
-- document any private PI WEB APIs it dogfoods until those APIs become stable plugin runtime helpers.
-
-Typical local development loop from this repository:
-
-```bash
-npm run dev
-curl http://127.0.0.1:8504/pi-web-plugins/manifest.json
+```json
+{
+  "plugins": {
+    "workspace-tasks": {
+      "enabled": true,
+      "settings": {}
+    },
+    "info": {
+      "enabled": false
+    }
+  }
+}
 ```
 
-The main PI WEB `dev` command watches bundled plugins in `pi-web-plugins/`, builds/watches separate plugin packages in `plugins/*`, and discovers those source-checkout plugin packages without symlinking them into `~/.pi-web/plugins`.
+Plugins are enabled by default. Set `enabled` to `false` to remove a plugin from `/pi-web-plugins/manifest.json` so the browser will not import or activate it on the next page load. The optional `settings` object is reserved for plugin-specific settings.
+
+After changing plugin enablement, reload the PI WEB browser tab. Already-loaded plugin JavaScript is not unloaded from the current page.
+
+## Built-in plugins
+
+PI WEB ships core, discoverable plugins in the main `@jmfederico/pi-web` npm package. No separate `pi install` step is required: update PI WEB, reload the browser tab, and the bundled plugins appear in `/pi-web-plugins/manifest.json`.
+
+Built-in plugins can be managed from **Settings → Plugins** or with the top-level `plugins` config key.
+
+### Workspace Tasks
+
+**Plugin id:** `workspace-tasks`  
+**Config file:** `.pi-web/tasks.json`  
+**What it does:** adds a **Tasks** workspace tab for running configured shell commands in dedicated PI WEB terminals.
+
+Workspace Tasks is enabled by default. To hide it, disable `workspace-tasks` in **Settings → Plugins** or set:
+
+```json
+{
+  "plugins": {
+    "workspace-tasks": { "enabled": false }
+  }
+}
+```
+
+Configure workspace tasks in `.pi-web/tasks.json`:
+
+```json
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "docker.start",
+      "title": "Start Docker",
+      "group": "Docker",
+      "description": "Start the local Docker Compose environment.",
+      "command": "./docker/scripts/docker-compose-dev up -d"
+    },
+    {
+      "id": "db.reset",
+      "title": "Reset DB",
+      "group": "Database",
+      "command": "go -C klingit-go run ./cli db reset",
+      "confirm": true
+    }
+  ]
+}
+```
+
+Open a workspace, choose the **Tasks** tab, and click **Run** next to a task. Commands run in the workspace root because PI WEB creates the terminal for that workspace.
+
+Task fields:
+
+- `version`: must be `1`.
+- `tasks`: array of task definitions.
+- `id`: stable task id, matching `^[a-z][a-z0-9.-]*$`.
+- `title`: button label.
+- `command`: literal shell command sent to the terminal.
+- `description`: optional explanatory text.
+- `group`: optional group heading.
+- `confirm`: optional boolean. When true, the browser asks before dispatching the command.
+
+Review task configs before running them, especially in shared projects. Workspace Tasks runs trusted shell commands from your repositories.
 
 ## Discovery and packaging
 

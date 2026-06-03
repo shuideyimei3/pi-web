@@ -35,6 +35,7 @@ function installWindow(href: string): { pushed: string[]; replaced: string[] } {
 describe("settings route helpers", () => {
   it("parses supported settings deep links and aliases", () => {
     expect(parseSettingsSection("general")).toBe("general");
+    expect(parseSettingsSection("plugins")).toBe("plugins");
     expect(parseSettingsSection("shortcuts")).toBe("shortcuts");
     expect(parseSettingsSection("keyboard")).toBe("shortcuts");
     expect(parseSettingsSection("unknown")).toBeUndefined();

@@ -23,6 +23,7 @@ export function draftFromConfig(config: PiWebConfigValues): ConfigDraft {
 export function configFromDraft(draft: ConfigDraft, baseConfig: PiWebConfigValues = {}): PiWebConfigValues {
   const config: PiWebConfigValues = {
     ...(baseConfig.shortcuts === undefined ? {} : { shortcuts: baseConfig.shortcuts }),
+    ...(baseConfig.plugins === undefined ? {} : { plugins: baseConfig.plugins }),
   };
   const host = draft.host.trim();
   const port = draft.port.trim();

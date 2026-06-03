@@ -18,6 +18,7 @@ import {
   parseModelSelectionResponse,
   parseOAuthFlowState,
   parsePiWebConfigResponse,
+  parsePiWebPluginsResponse,
   parsePiWebStatusResponse,
   parseProject,
   parseRestored,
@@ -40,6 +41,10 @@ export const piWebApi = {
 export const configApi = {
   config: () => request("/api/config", parsePiWebConfigResponse),
   saveConfig: (config: PiWebConfigValues) => request("/api/config", parsePiWebConfigResponse, { method: "PUT", body: JSON.stringify({ config }) }),
+};
+
+export const pluginsApi = {
+  plugins: () => request("/api/plugins", parsePiWebPluginsResponse),
 };
 
 export const activityApi = {
@@ -163,6 +168,7 @@ export const gitApi = {
 export const api = {
   ...piWebApi,
   ...configApi,
+  ...pluginsApi,
   ...activityApi,
   ...projectsApi,
   ...workspacesApi,

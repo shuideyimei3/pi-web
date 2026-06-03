@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { effectivePiWebConfig, loadPiWebConfig, savePiWebConfig, type LoadOptions, type PiWebConfig } from "../config.js";
 import type { PiWebConfigEnvOverrides, PiWebConfigResponse, PiWebConfigValues } from "../shared/apiTypes.js";
+import { isPiWebPluginId } from "../shared/pluginIds.js";
 
 export interface PiWebConfigService {
   read: () => PiWebConfigResponse | Promise<PiWebConfigResponse>;
@@ -56,6 +57,7 @@ function parseConfigRequest(value: unknown): PiWebConfig {
   const port = value["port"];
   const allowedHosts = value["allowedHosts"];
   const shortcuts = value["shortcuts"];
+  const plugins = value["plugins"];
   if (host !== undefined) {
     if (typeof host !== "string") throw new Error("PI WEB config host must be a string");
     config.host = host;
@@ -66,6 +68,7 @@ function parseConfigRequest(value: unknown): PiWebConfig {
   }
   if (allowedHosts !== undefined) config.allowedHosts = parseAllowedHostsRequest(allowedHosts);
   if (shortcuts !== undefined) config.shortcuts = parseShortcutsRequest(shortcuts);
+  if (plugins !== undefined) config.plugins = parsePluginsRequest(plugins);
   return config;
 }
 
@@ -82,6 +85,19 @@ function parseShortcutsRequest(value: unknown): Record<string, string | null> {
   return Object.fromEntries(Object.entries(value).map(([actionId, shortcut]) => {
     if (shortcut !== null && (typeof shortcut !== "string" || shortcut === "")) throw new Error("PI WEB config shortcut values must be non-empty strings or null");
     return [actionId, shortcut];
+  }));
+}
+
+function parsePluginsRequest(value: unknown): NonNullable<PiWebConfig["plugins"]> {
+  if (!isRecord(value) || Array.isArray(value)) throw new Error("PI WEB config plugins must be an object");
+  return Object.fromEntries(Object.entries(value).map(([pluginId, config]) => {
+    if (!isPiWebPluginId(pluginId)) throw new Error("PI WEB config plugin ids are invalid");
+    if (!isRecord(config) || Array.isArray(config)) throw new Error("PI WEB config plugin entries must be objects");
+    const enabled = config["enabled"];
+    if (enabled !== undefined && typeof enabled !== "boolean") throw new Error("PI WEB config plugin enabled values must be booleans");
+    const settings = config["settings"];
+    if (settings !== undefined && (!isRecord(settings) || Array.isArray(settings))) throw new Error("PI WEB config plugin settings must be objects");
+    return [pluginId, config];
   }));
 }
 
