@@ -1291,6 +1291,60 @@ describe("PiSessionService", () => {
       }
     });
 
+    it("does not relink a child marker when the current child file header no longer records the parent", async () => {
+      const tempDir = await mkdtemp(join(tmpdir(), "pi-web-subsession-stale-child-header-"));
+      const parentFile = join(tempDir, "parent.jsonl");
+      const childFile = join(tempDir, "child.jsonl");
+      await writeFile(parentFile, `${JSON.stringify({ type: "session", version: 3, id: "parent-1", timestamp: "2026-01-01T00:00:00.000Z", cwd: "/workspace" })}\n`, "utf8");
+      await writeFile(childFile, `${JSON.stringify({ type: "session", version: 3, id: "child-1", timestamp: "2026-01-01T00:00:00.000Z", cwd: "/workspace-feature" })}\n`, "utf8");
+
+      try {
+        const childManager = fakeSessionManager("/workspace-feature", {
+          getHeader: () => ({ parentSession: parentFile }),
+          getEntries: () => [{ type: "custom", customType: "pi-web.subsession.spawned", data: { version: 1, spawnedBySessionId: "parent-1", spawnedSessionId: "child-1" } }],
+        });
+        const parentManager = fakeSessionManager("/workspace", {
+          getEntries: () => [{ type: "custom", customType: "pi-web.subsession.link", data: { version: 1, spawnedBySessionId: "parent-1", spawnedSessionId: "child-1", spawnedSessionFile: childFile, cwd: "/workspace-feature" } }],
+        });
+        const child = fakeRuntime("child-1", { sessionFile: childFile, sessionManager: childManager });
+        const parent = fakeRuntime("parent-1", { sessionFile: parentFile, sessionManager: parentManager });
+        const runtimes = [child.runtime, parent.runtime];
+        let index = 0;
+        const open = vi.fn((path: string) => path === parentFile ? parentManager : childManager);
+        const service = new PiSessionService(new CapturingSessionEventHub(), {
+          createAgentRuntime: () => {
+            const runtime = runtimes[index] ?? parent.runtime;
+            index += 1;
+            return Promise.resolve(runtime);
+          },
+          sessionManager: {
+            create: () => childManager,
+            list: () => Promise.resolve([{ ...sessionRecord("child-1", "/workspace-feature"), path: childFile, parentSessionPath: parentFile }]),
+            listAll: () => Promise.resolve([]),
+            open,
+          },
+          archiveStore: {
+            ...emptyArchiveStore(),
+            get: (sessionId) => Promise.resolve(sessionId === "child-1" ? { sessionId: "child-1", cwd: "/workspace-feature", archivedAt: "2026-01-01T00:00:00.000Z", parentSessionPath: parentFile } : undefined),
+          },
+          heartbeatIntervalMs: 60_000,
+        });
+
+        await service.status(sessionRef("child-1", "/workspace-feature"));
+        child.session.isStreaming = true;
+        child.emit({ type: "agent_start" });
+        child.session.isStreaming = false;
+        child.emit({ type: "agent_end" });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(parent.calls.sendCustomMessage).toHaveLength(0);
+        expect(open).not.toHaveBeenCalledWith(parentFile);
+        await service.dispose();
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("does not relink a child marker when the child header points at a different parent id", async () => {
       const tempDir = await mkdtemp(join(tmpdir(), "pi-web-subsession-wrong-parent-"));
       const mismatchedParentFile = join(tempDir, "other-parent.jsonl");
