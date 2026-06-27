@@ -26,6 +26,39 @@ describe("applyTranscriptEvent", () => {
     ]);
   });
 
+  it("clears Model response failed on assistant.delta when retry produces output", () => {
+    const messages: ChatLine[] = [
+      textMessage("user", "question"),
+      textMessage("system", "Model response failed: 500 empty_stream: upstream stream closed before first payload"),
+    ];
+
+    expect(applyTranscriptEvent(messages, { type: "assistant.delta", text: "Hello" })).toEqual([
+      textMessage("user", "question"),
+      textMessage("assistant", "Hello"),
+    ]);
+  });
+
+  it("clears Model response failed on assistant.thinking.delta when retry produces thinking", () => {
+    const messages: ChatLine[] = [
+      textMessage("user", "question"),
+      textMessage("system", "Model response failed: 500 empty_stream"),
+    ];
+
+    expect(applyTranscriptEvent(messages, { type: "assistant.thinking.delta", text: "Let me" })).toEqual([
+      textMessage("user", "question"),
+      { role: "assistant", parts: [{ type: "thinking", text: "Let me" }] },
+    ]);
+  });
+
+  it("does not clear Model response failed on empty delta", () => {
+    const messages: ChatLine[] = [
+      textMessage("user", "question"),
+      textMessage("system", "Model response failed: 500 empty_stream"),
+    ];
+
+    expect(applyTranscriptEvent(messages, { type: "assistant.delta", text: "" })).toEqual(messages);
+  });
+
   it("replaces the streamed assistant message with the finalized history shape", () => {
     const streamed: ChatLine[] = [
       textMessage("user", "question"),
@@ -291,6 +324,68 @@ describe("applyTranscriptEvent", () => {
 
     expect(applyTranscriptEvent(messages, { type: "message.end", message: { role: "user", content: "sent prompt", timestamp: "2026-05-09T12:00:00.000Z" } })).toEqual([
       { ...textMessage("user", "sent prompt"), meta: { timestamp: "2026-05-09T12:00:00.000Z" } },
+    ]);
+  });
+
+  it("removes trailing Model response failed lines when a successful assistant message arrives after retry", () => {
+    const messages: ChatLine[] = [
+      textMessage("user", "question"),
+      textMessage("system", "Model response failed: OpenAI API error (500): 500 empty_stream: upstream stream closed before first payload"),
+    ];
+
+    expect(applyTranscriptEvent(messages, {
+      type: "message.end",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "successful answer after retry" }],
+        timestamp: "2026-05-09T12:00:00.000Z",
+        provider: "openai",
+        model: "gpt-4.1",
+      },
+    })).toEqual([
+      textMessage("user", "question"),
+      { ...textMessage("assistant", "successful answer after retry"), meta: { timestamp: "2026-05-09T12:00:00.000Z", model: { provider: "openai", id: "gpt-4.1" } } },
+    ]);
+  });
+
+  it("removes multiple trailing Model response failed lines when a successful assistant message arrives", () => {
+    const messages: ChatLine[] = [
+      textMessage("user", "question"),
+      textMessage("system", "Model response failed: first error"),
+      textMessage("system", "Model response failed: second error"),
+    ];
+
+    expect(applyTranscriptEvent(messages, {
+      type: "message.end",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "answer" }],
+        timestamp: "2026-05-09T12:00:00.000Z",
+      },
+    })).toEqual([
+      textMessage("user", "question"),
+      { ...textMessage("assistant", "answer"), meta: { timestamp: "2026-05-09T12:00:00.000Z" } },
+    ]);
+  });
+
+  it("does not remove non-error system messages when a successful assistant message arrives", () => {
+    const messages: ChatLine[] = [
+      textMessage("user", "question"),
+      textMessage("system", "Some other system message"),
+      textMessage("system", "Model response failed: transient error"),
+    ];
+
+    expect(applyTranscriptEvent(messages, {
+      type: "message.end",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "answer" }],
+        timestamp: "2026-05-09T12:00:00.000Z",
+      },
+    })).toEqual([
+      textMessage("user", "question"),
+      textMessage("system", "Some other system message"),
+      { ...textMessage("assistant", "answer"), meta: { timestamp: "2026-05-09T12:00:00.000Z" } },
     ]);
   });
 });

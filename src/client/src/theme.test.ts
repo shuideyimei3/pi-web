@@ -54,6 +54,10 @@ const tokens = {
 const themes = [
   theme("pi-web-dark", "PI WEB Dark", "dark"),
   theme("pi-web-light", "PI WEB Light", "light"),
+  theme("ayu-mirage", "Ayu Mirage", "dark"),
+  theme("ayu-dark", "Ayu Dark", "dark"),
+  theme("tokyo-night", "Tokyo Night", "dark"),
+  theme("nord", "Nord", "dark"),
   theme("classic", "PI WEB Classic", "dark"),
 ];
 

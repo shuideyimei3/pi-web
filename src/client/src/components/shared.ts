@@ -53,11 +53,81 @@ export interface CompletionItem {
 export const appStyles = css`
   /* Mobile browsers already subtract browser controls from 100dvh; reserve bottom safe area only in standalone PWA modes. */
   :host { --pi-app-safe-area-bottom: 0px; position: fixed; top: 0; right: 0; left: 0; display: block; height: 100dvh; box-sizing: border-box; overflow: hidden; padding: env(safe-area-inset-top) env(safe-area-inset-right) var(--pi-app-safe-area-bottom) env(safe-area-inset-left); color: var(--pi-text); background: var(--pi-bg); font: 14px system-ui, sans-serif; }
+  :host([data-color-scheme="dark"]) {
+    background:
+      radial-gradient(70% 55% at 12% 10%, rgba(13,17,23,.96), transparent 58%),
+      radial-gradient(54% 46% at 82% 4%, rgba(22,38,72,.52), transparent 62%),
+      radial-gradient(42% 42% at 92% 72%, rgba(48,18,58,.38), transparent 60%),
+      radial-gradient(50% 45% at 18% 92%, rgba(18,42,58,.32), transparent 64%),
+      conic-gradient(from 210deg at 50% 42%, rgba(13,17,23,.94), rgba(18,28,52,.48), rgba(28,18,38,.42), rgba(16,22,42,.48), rgba(13,17,23,.94)),
+      #060810;
+  }
+  :host([data-color-scheme="dark"])::before,
+  :host([data-color-scheme="dark"])::after {
+    content: "";
+    position: absolute;
+    inset: -18%;
+    z-index: 0;
+    pointer-events: none;
+  }
+  :host([data-color-scheme="dark"])::before {
+    background:
+      linear-gradient(115deg, transparent 0 18%, rgba(20,30,55,.48) 20%, transparent 23% 44%, rgba(40,20,60,.28) 46%, transparent 50% 100%),
+      linear-gradient(27deg, transparent 0 30%, rgba(16,24,48,.38) 32%, transparent 35% 68%, rgba(30,16,50,.24) 70%, transparent 73%),
+      repeating-linear-gradient(132deg, rgba(255,255,255,.03) 0 1px, transparent 1px 34px);
+    filter: blur(18px) saturate(170%) contrast(112%);
+    transform: rotate(-5deg) scale(1.08);
+    opacity: .92;
+  }
+  :host([data-color-scheme="dark"])::after {
+    inset: 0;
+    background:
+      linear-gradient(90deg, rgba(13,17,23,.28), transparent 18% 82%, rgba(13,17,23,.18)),
+      linear-gradient(180deg, rgba(13,17,23,.36), transparent 28% 74%, rgba(13,17,23,.18));
+    backdrop-filter: blur(34px) saturate(165%) contrast(108%);
+    -webkit-backdrop-filter: blur(34px) saturate(165%) contrast(108%);
+    opacity: .74;
+  }
+  :host([data-color-scheme="light"]) {
+    background:
+      radial-gradient(70% 55% at 12% 10%, rgba(255,255,255,.92), transparent 58%),
+      radial-gradient(54% 46% at 82% 4%, rgba(165,210,255,.54), transparent 62%),
+      radial-gradient(42% 42% at 92% 72%, rgba(255,183,213,.42), transparent 60%),
+      radial-gradient(50% 45% at 18% 92%, rgba(202,177,255,.42), transparent 64%),
+      conic-gradient(from 210deg at 50% 42%, rgba(255,255,255,.88), rgba(214,229,255,.58), rgba(255,239,220,.7), rgba(236,224,255,.58), rgba(255,255,255,.88)),
+      #edf2f7;
+  }
+  :host([data-color-scheme="light"])::before,
+  :host([data-color-scheme="light"])::after {
+    content: "";
+    position: absolute;
+    inset: -18%;
+    z-index: 0;
+    pointer-events: none;
+  }
+  :host([data-color-scheme="light"])::before {
+    background:
+      linear-gradient(115deg, transparent 0 18%, rgba(255,255,255,.74) 20%, transparent 23% 44%, rgba(122,151,210,.2) 46%, transparent 50% 100%),
+      linear-gradient(27deg, transparent 0 30%, rgba(255,255,255,.6) 32%, transparent 35% 68%, rgba(255,255,255,.44) 70%, transparent 73%),
+      repeating-linear-gradient(132deg, rgba(255,255,255,.16) 0 1px, transparent 1px 34px);
+    filter: blur(18px) saturate(170%) contrast(112%);
+    transform: rotate(-5deg) scale(1.08);
+    opacity: .92;
+  }
+  :host([data-color-scheme="light"])::after {
+    inset: 0;
+    background:
+      linear-gradient(90deg, rgba(255,255,255,.36), transparent 18% 82%, rgba(255,255,255,.26)),
+      linear-gradient(180deg, rgba(255,255,255,.5), transparent 28% 74%, rgba(255,255,255,.28));
+    backdrop-filter: blur(34px) saturate(165%) contrast(108%);
+    -webkit-backdrop-filter: blur(34px) saturate(165%) contrast(108%);
+    opacity: .74;
+  }
   :host([pwa-display-mode]) { --pi-app-safe-area-bottom: env(safe-area-inset-bottom); }
   @media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
     :host { --pi-app-safe-area-bottom: env(safe-area-inset-bottom); }
   }
-  .shell { --navigation-panel-size: 340px; --workspace-panel-size: minmax(360px, 42vw); --navigation-panel-width: var(--navigation-panel-size); --workspace-panel-width: var(--workspace-panel-size); display: grid; grid-template-columns: var(--navigation-panel-width) 1px minmax(320px, 1fr) 1px var(--workspace-panel-width); height: 100%; min-height: 0; }
+  .shell { --navigation-panel-size: 340px; --workspace-panel-size: minmax(360px, 42vw); --navigation-panel-width: var(--navigation-panel-size); --workspace-panel-width: var(--workspace-panel-size); position: relative; z-index: 1; display: grid; grid-template-columns: var(--navigation-panel-width) 1px minmax(320px, 1fr) 1px var(--workspace-panel-width); height: 100%; min-height: 0; backdrop-filter: var(--pi-glass-blur); -webkit-backdrop-filter: var(--pi-glass-blur); }
   aside { grid-column: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   aside app-navigation-panel { flex: 1 1 auto; min-height: 0; }
   header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
@@ -65,7 +135,7 @@ export const appStyles = css`
   project-list, workspace-list { flex: 0 0 auto; max-height: 26%; min-height: 0; overflow: hidden; border-bottom: 1px solid var(--pi-border-muted); }
   session-list { flex: 1 1 auto; min-height: 0; overflow: hidden; }
   main { grid-column: 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  .context-bar { position: relative; flex: 0 0 auto; min-width: 0; display: none; align-items: center; gap: 0; padding: 6px 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
+  .context-bar { position: relative; flex: 0 0 auto; min-width: 0; display: none; align-items: center; gap: 0; padding: 6px 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); backdrop-filter: var(--pi-glass-blur); -webkit-backdrop-filter: var(--pi-glass-blur); }
   .context-bar::before, .context-bar::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 20px; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
   .context-bar::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
   .context-bar::after { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
@@ -83,7 +153,7 @@ export const appStyles = css`
   .context-kind { display: none; }
   .context-value { min-width: 0; overflow: visible; text-overflow: clip; white-space: nowrap; }
   app-mobile-main-tabs { display: none; }
-  .mobile-tabs-frame { position: relative; display: none; flex: 0 0 auto; min-width: 0; border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
+  .mobile-tabs-frame { position: relative; display: none; flex: 0 0 auto; min-width: 0; border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); backdrop-filter: var(--pi-glass-blur); -webkit-backdrop-filter: var(--pi-glass-blur); }
   .mobile-tabs-frame::before, .mobile-tabs-frame::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 20px; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
   .mobile-tabs-frame::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
   .mobile-tabs-frame::after { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
@@ -198,7 +268,7 @@ export const workspacePanelStyles = css`
   .diffs.single { grid-template-rows: minmax(0, 1fr); }
   .diff-section { min-height: 0; display: flex; flex-direction: column; border-bottom: 1px solid var(--pi-border); }
   .diff-section:last-child { border-bottom: 0; }
-  .viewer-header { position: sticky; top: 0; display: flex; justify-content: space-between; gap: 8px; padding: 8px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
+  .viewer-header { position: sticky; top: 0; display: flex; justify-content: space-between; gap: 8px; padding: 8px; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); backdrop-filter: var(--pi-glass-blur); -webkit-backdrop-filter: var(--pi-glass-blur); }
   .viewer-header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   code-viewer, unified-diff-viewer { flex: 1 1 auto; min-height: 0; }
   .image-preview { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 16px; }
@@ -316,7 +386,7 @@ export const chatStyles = css`
      ════════════════════════════════════════════════════════════════ */
   :host { position: relative; z-index: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; color: var(--pi-text); font: 14px system-ui, sans-serif; }
   .chat-wrap { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
-  .chat { height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: 26px 16px 28px; box-sizing: border-box; }
+  .chat { height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; scroll-behavior: smooth; padding: 26px 16px 28px; box-sizing: border-box; }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
 
   /* ── Activity dock ── */
@@ -409,6 +479,8 @@ export const chatStyles = css`
   /* ── Session activity ── */
   .session-activity { width: fit-content; max-width: min(560px, 100%); min-width: 0; box-sizing: border-box; display: flex; align-items: baseline; gap: 7px; margin: 8px auto 14px; padding: 4px 9px; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: transparent; color: var(--pi-muted); overflow: hidden; font-size: 12px; }
   .session-activity.compacting { border-color: rgba(210, 168, 255, .2); }
+  .compacting-spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid rgba(210, 168, 255, .3); border-top-color: var(--pi-purple); border-radius: 50%; animation: compacting-spin .8s linear infinite; vertical-align: middle; margin-right: 4px; }
+  @keyframes compacting-spin { to { transform: rotate(360deg); } }
   .session-activity.receiving { border-color: rgba(127, 209, 160, .2); }
   .session-activity strong { flex: 0 0 auto; color: var(--pi-purple); font-size: 12px; font-weight: 600; }
   .session-activity.receiving strong { color: var(--pi-success); }
@@ -417,7 +489,7 @@ export const chatStyles = css`
 
   /* ── Message header ── */
   .msg-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 22px; margin-bottom: 8px; }
-  .msg > .msg-header { position: sticky; top: -26px; z-index: 4; margin: -20px -0px 8px -16px; padding: 7px 10px 6px 16px; border-radius: 0; border-bottom: 1px solid rgba(255,255,255,0.04); background: var(--pi-bg); box-shadow: 0 8px 18px var(--pi-shadow-soft); }
+  .msg > .msg-header { position: sticky; top: -26px; z-index: 4; margin: -20px -0px 8px -16px; padding: 7px 10px 6px 16px; border-radius: 0; border-bottom: 1px solid rgba(255,255,255,0.04); background: var(--pi-bg); backdrop-filter: var(--pi-glass-blur); -webkit-backdrop-filter: var(--pi-glass-blur); box-shadow: 0 8px 18px var(--pi-shadow-soft); }
   .msg.user > .msg-header { border-bottom-color: rgba(139, 178, 255, .15); }
   .msg.assistant > .msg-header { border-bottom-color: rgba(255,255,255,0.04); background: var(--pi-bg); }
   .msg.tool > .msg-header { border-bottom-color: rgba(238, 178, 101, .15); }
@@ -535,6 +607,17 @@ export const chatStyles = css`
 export const formattedTextStyles = css`
   :host { display: block; }
   .formatted { white-space: normal; overflow-wrap: anywhere; line-height: 1.65; text-align: start; unicode-bidi: plaintext; font-size: 14px; color: var(--pi-text); }
+
+  /* ── Smooth scroll behavior ── */
+  .chat { scroll-behavior: smooth; }
+  
+  /* ── Streaming content containers ── */
+  .streaming-blocks, .streaming-tail { display: block; }
+  .streaming-tail:empty { display: none; }
+  .streaming-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
   p, ul, ol, pre, blockquote, table, .code-block-wrapper { margin: 0 0 10px; }
   :is(p, ul, ol, pre, blockquote, table, .code-block-wrapper):last-child { margin-bottom: 0; }
   ul, ol { padding-left: 22px; }
@@ -590,11 +673,6 @@ export const formattedTextStyles = css`
   }
   .code-copy-button:hover, .code-copy-button:focus { color: var(--pi-text); background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.15); }
 
-  .code-lang-label {
-    position: absolute; top: 6px; left: 10px; z-index: 1;
-    font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    color: var(--pi-dim); pointer-events: none;
-  }
 
   .code-collapse-button {
     position: absolute; bottom: 6px; right: 6px; z-index: 1;
@@ -629,7 +707,7 @@ export const formattedTextStyles = css`
 
 export const statusBarStyles = css`
   :host { display: block; color: var(--pi-muted); font: 12px system-ui, sans-serif; }
-  .bar { display: flex; justify-content: flex-end; gap: 12px; align-items: center; min-width: 0; padding: 7px 12px; border-top: 1px solid rgba(255,255,255,0.04); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
+  .bar { display: flex; justify-content: flex-end; gap: 12px; align-items: center; min-width: 0; padding: 7px 12px; border-top: 1px solid rgba(255,255,255,0.04); background: var(--pi-bg); backdrop-filter: var(--pi-glass-blur); -webkit-backdrop-filter: var(--pi-glass-blur); white-space: nowrap; overflow: hidden; }
   span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .activity { display: inline-flex; align-items: center; gap: 6px; color: var(--pi-muted); }
   .activity.active { color: var(--pi-success); }

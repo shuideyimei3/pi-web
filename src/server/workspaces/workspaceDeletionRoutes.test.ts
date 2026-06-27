@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TerminalCommandRun } from "../../shared/apiTypes.js";
@@ -165,6 +166,7 @@ function fakeDaemon(): SessionProxyDaemon {
         } satisfies TerminalCommandRun),
       });
     },
+    streamGet: (path) => Promise.resolve({ statusCode: 200, headers: { "content-type": "text/event-stream" }, body: Readable.from([`data: ${JSON.stringify({ path })}\n\n`]) }),
     connectWebSocket: () => { throw new Error("WebSocket not configured for test"); },
   };
 }

@@ -8,6 +8,7 @@ import {
   createEditToolDefinition,
   defineTool,
   getAgentDir,
+  initTheme,
   ModelRegistry,
   SessionManager,
   type CreateAgentSessionRuntimeFactory,
@@ -235,6 +236,7 @@ type SpawnSessionFn = (input: SpawnSessionInvocation) => Promise<SpawnSessionRes
 
 function createDefaultRuntimeFactory(authStorage: AuthStorage, modelRegistry: ModelRegistryInstance, spawn?: SpawnSessionFn, subsessions?: SubsessionToolDeps): CreateAgentSessionRuntimeFactory {
   return async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
+    initTheme("dark", false);
     const services = await createAgentSessionServices({ cwd, agentDir, authStorage, modelRegistry });
     const customTools = [
       createPiWebEditToolDefinition(cwd),

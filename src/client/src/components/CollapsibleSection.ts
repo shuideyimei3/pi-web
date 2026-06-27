@@ -43,7 +43,7 @@ export class CollapsibleSection extends LitElement {
     :host { display: block; width: 100%; max-width: 100%; min-width: 0; }
     .section {
       border-top: 1px solid rgba(255, 255, 255, 0.04);
-      padding-top: 6px;
+      padding-top: 2px;
     }
     .section.borderless { border-top: 0; padding-top: 0; }
 
@@ -80,7 +80,7 @@ export class CollapsibleSection extends LitElement {
 
     /* ── Body ── */
     .section-body {
-      padding-top: 6px;
+      padding-top: 4px;
       animation: sectionFadeIn .2s cubic-bezier(.4, 0, .2, 1);
     }
     .section-body[hidden] { display: none; }

@@ -48,8 +48,9 @@ export class ToolCallNode extends LitElement {
     const visibleDiff = actualDiff ?? preview?.diff;
     const diffStats = visibleDiff === undefined ? undefined : countDiffLines(visibleDiff);
     const previewMismatch = actualDiff !== undefined && preview?.diff !== undefined && actualDiff !== preview.diff;
-    const errorText = status === "error" ? (execution?.resultText ?? result?.text) : preview?.error;
-    const bodyText = visibleDiff === undefined ? (execution?.resultText ?? result?.text) : undefined;
+    const resultText = execution?.resultText ?? result?.text;
+    const errorText = preview?.error;
+    const bodyText = visibleDiff === undefined ? resultText : undefined;
     const isRunning = status === "running" || status === "pending";
     const effectiveOpen = this.userToggled ? this.expanded : (isRunning || status === "error");
 
@@ -78,9 +79,8 @@ export class ToolCallNode extends LitElement {
                 ${this.renderErrorSuggestion(toolName, status)}
               </div>
             `}
-            ${this.renderToolDetails(toolName, args, status, visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff")}
-            ${visibleDiff === undefined ? this.renderTextBody(bodyText) : null}
-            ${toolName !== "edit" && toolName !== "write" && visibleDiff === undefined && (bodyText === undefined || bodyText === "")
+            ${this.renderToolDetails(toolName, args, status, visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff", bodyText)}
+            ${toolName !== "bash" && toolName !== "edit" && toolName !== "write" && visibleDiff === undefined && (bodyText === undefined || bodyText === "")
               ? html`<p class="tcn-muted">${summary}</p>` : null}
           </div>
         ` : null}
@@ -99,39 +99,57 @@ export class ToolCallNode extends LitElement {
     status: string,
     visibleDiff: string | undefined,
     diffLabel: string,
+    bodyText: string | undefined,
   ) {
-    if (toolName === "bash") return this.renderBashCommand(args);
-    if (toolName === "read") return this.renderReadDetails(args);
-    if (toolName === "edit" || toolName === "write") return this.renderFileChangeDetails(toolName, args, visibleDiff, diffLabel);
+    if (toolName === "bash") return this.renderBashCommand(args, bodyText);
+    if (toolName === "read") return this.renderReadDetails(args, bodyText);
+    if (toolName === "edit" || toolName === "write") return this.renderFileChangeDetails(toolName, args, visibleDiff, diffLabel, bodyText);
     if (visibleDiff !== undefined) return this.renderDiffBody(visibleDiff, diffLabel);
-    return args !== undefined ? this.renderArgsSection(args, status) : null;
+    return this.renderGenericToolDetails(args, status, bodyText);
   }
 
-  private renderBashCommand(args: unknown) {
+  private renderBashCommand(args: unknown, output: string | undefined) {
     const command = commandFromArgs(args);
     if (command === undefined || command === "") return null;
+    const hasOutput = output !== undefined && output !== "";
+    const lines = hasOutput ? output.split("\n") : [];
+    const truncated = lines.length > MAX_COLLAPSED_RESULT_LINES && !this.showFullResult;
+    const visible = truncated ? lines.slice(0, MAX_COLLAPSED_RESULT_LINES).join("\n") : output;
     return html`
-      <div class="tcn-command" aria-label="Command">
-        <span class="tcn-command-prompt">$</span>
-        <code>${command}</code>
+      <div class="tcn-command" aria-label="Command and output">
+        <div class="tcn-command-line">
+          <span class="tcn-command-prompt">$</span>
+          <code>${command}</code>
+        </div>
+        ${hasOutput ? html`
+          <pre class="tcn-command-output">${visible}${truncated
+            ? html`<span class="tcn-truncation"> ${String(lines.length - MAX_COLLAPSED_RESULT_LINES)} more lines</span>`
+            : ""}</pre>
+          ${truncated
+            ? html`<button class="tcn-btn" type="button" @click=${(e: Event) => { e.stopPropagation(); this.showFullResult = true; }}>Show all ${String(lines.length)} lines</button>`
+            : null}
+        ` : null}
       </div>
     `;
   }
 
-  private renderReadDetails(args: unknown) {
+  private renderReadDetails(args: unknown, output: string | undefined) {
     const filePath = pathFromArgs(args);
-    if (filePath === undefined) return null;
+    if (filePath === undefined) return this.renderInlineOutput(output);
     const range = readRangeLabel(args);
     return html`
-      <div class="tcn-file-change">
-        <span class="tcn-file-action">read</span>
-        <span class="tcn-file-path">${filePath}</span>
-        ${range === undefined ? null : html`<span class="tcn-file-range">${range}</span>`}
+      <div class="tcn-file-block">
+        <div class="tcn-file-change">
+          <span class="tcn-file-action">read</span>
+          <span class="tcn-file-path">${filePath}</span>
+          ${range === undefined ? null : html`<span class="tcn-file-range">${range}</span>`}
+        </div>
+        ${this.renderInlineOutput(output)}
       </div>
     `;
   }
 
-  private renderFileChangeDetails(toolName: string, args: unknown, visibleDiff: string | undefined, diffLabel: string) {
+  private renderFileChangeDetails(toolName: string, args: unknown, visibleDiff: string | undefined, diffLabel: string, output: string | undefined) {
     const filePath = pathFromArgs(args);
     const writeContent = toolName === "write" ? newTextFromArgs(args) : undefined;
     return html`
@@ -148,6 +166,7 @@ export class ToolCallNode extends LitElement {
           : args !== undefined
             ? this.renderArgsSection(args, "error")
             : null}
+      ${visibleDiff === undefined ? this.renderInlineOutput(output) : null}
     `;
   }
 
@@ -185,21 +204,30 @@ export class ToolCallNode extends LitElement {
     `;
   }
 
-  private renderTextBody(text: string | undefined) {
+  private renderGenericToolDetails(args: unknown, status: string, output: string | undefined) {
+    const parameters = args === undefined ? null : this.renderArgsSection(args, status);
+    const inlineOutput = this.renderInlineOutput(output);
+    if (parameters === null && inlineOutput === null) return null;
+    return html`
+      <div class="tcn-tool-detail">
+        ${parameters}
+        ${inlineOutput}
+      </div>
+    `;
+  }
+
+  private renderInlineOutput(text: string | undefined) {
     if (text === undefined || text === "") return null;
     const lines = text.split("\n");
     const truncated = lines.length > MAX_COLLAPSED_RESULT_LINES && !this.showFullResult;
     const visible = truncated ? lines.slice(0, MAX_COLLAPSED_RESULT_LINES).join("\n") : text;
     return html`
-      <details class="tcn-result" ?open=${true}>
-        <summary>Result <small>${String(lines.length)} ${lines.length === 1 ? "line" : "lines"}</small></summary>
-        <pre class="tcn-pre">${visible}${truncated
-          ? html`<span class="tcn-truncation"> ${String(lines.length - MAX_COLLAPSED_RESULT_LINES)} more lines</span>`
-          : ""}</pre>
-        ${truncated
-          ? html`<button class="tcn-btn" type="button" @click=${(e: Event) => { e.stopPropagation(); this.showFullResult = true; }}>Show all ${String(lines.length)} lines</button>`
-          : null}
-      </details>
+      <pre class="tcn-inline-output">${visible}${truncated
+        ? html`<span class="tcn-truncation"> ${String(lines.length - MAX_COLLAPSED_RESULT_LINES)} more lines</span>`
+        : ""}</pre>
+      ${truncated
+        ? html`<button class="tcn-btn" type="button" @click=${(e: Event) => { e.stopPropagation(); this.showFullResult = true; }}>Show all ${String(lines.length)} lines</button>`
+        : null}
     `;
   }
 
@@ -293,7 +321,7 @@ export class ToolCallNode extends LitElement {
     .tcn-summary:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; border-radius: 4px; }
 
     .tcn-name {
-      color: var(--pi-muted);
+      color: var(--pi-dim);
       font-size: 13px;
       font-weight: 600;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -306,14 +334,14 @@ export class ToolCallNode extends LitElement {
     }
     .tcn-desc {
       min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      color: var(--pi-muted);
+      color: var(--pi-dim);
       font-size: 13px;
     }
     .tcn-diff-stats { display: inline-flex; gap: 2px; font-size: 12px; }
-    .added { color: color-mix(in srgb, #7fd1a0 70%, var(--pi-muted)); }
-    .removed { color: color-mix(in srgb, #f87b7b 70%, var(--pi-muted)); }
+    .added { color: color-mix(in srgb, #7fd1a0 50%, var(--pi-muted)); }
+    .removed { color: color-mix(in srgb, #f87b7b 50%, var(--pi-muted)); }
     .sep { opacity: .4; }
-    .tcn-edit-count { color: var(--pi-muted); font-size: 12px; }
+    .tcn-edit-count { color: var(--pi-dim); font-size: 12px; }
 
     .tcn-status-label {
       margin-left: auto;
@@ -322,17 +350,17 @@ export class ToolCallNode extends LitElement {
       text-transform: uppercase;
       letter-spacing: .04em;
     }
-    .tcn.success .tcn-status-label { color: color-mix(in srgb, #7fd1a0 65%, var(--pi-muted)); }
-    .tcn.error .tcn-status-label { color: color-mix(in srgb, #f87b7b 65%, var(--pi-muted)); }
-    .tcn.running .tcn-status-label { color: color-mix(in srgb, #8bb2ff 65%, var(--pi-muted)); }
+    .tcn.success .tcn-status-label { color: color-mix(in srgb, #7fd1a0 45%, var(--pi-muted)); }
+    .tcn.error .tcn-status-label { color: color-mix(in srgb, #f87b7b 45%, var(--pi-muted)); }
+    .tcn.running .tcn-status-label { color: color-mix(in srgb, #8bb2ff 45%, var(--pi-muted)); }
     .tcn.pending .tcn-status-label { color: var(--pi-dim); }
 
     /* ── Body: black-hole solid core ── */
     .tcn-body {
-      display: grid; gap: 6px;
+      display: grid; gap: 4px;
       background: transparent;
       border-radius: 12px;
-      padding: 8px 10px;
+      padding: 6px 10px;
     }
     .tcn.error .tcn-body {
     }
@@ -353,16 +381,18 @@ export class ToolCallNode extends LitElement {
     /* ── Tool-specific details ── */
     .tcn-command {
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr);
-      gap: 8px;
-      align-items: baseline;
+      gap: 6px;
       border-radius: 8px;
       background: rgba(255,255,255,0.03);
       padding: 7px 9px;
       font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
-    .tcn-command-prompt { color: var(--pi-muted); user-select: none; }
-    .tcn-command code { min-width: 0; color: var(--pi-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .tcn-command-line { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: baseline; min-width: 0; }
+    .tcn-command-prompt { color: var(--pi-dim); user-select: none; }
+    .tcn-command code { min-width: 0; color: var(--pi-dim); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .tcn-command-output { margin: 0; padding-left: 17px; border-left: 1px solid var(--pi-border-muted); color: var(--pi-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .tcn-inline-output { margin: 0; padding-left: 10px; border-left: 1px solid var(--pi-border-muted); color: var(--pi-text); white-space: pre-wrap; overflow-wrap: anywhere; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .tcn-file-block, .tcn-tool-detail { display: grid; gap: 6px; }
     .tcn-file-change {
       display: inline-flex;
       align-items: baseline;
@@ -444,8 +474,8 @@ export class ToolCallNode extends LitElement {
     .tcn-diff-block .hunk { color: var(--pi-accent-ref); background: var(--pi-accent-ref-bg); }
     .tcn-diff-block .file { color: var(--pi-dim); }
     .tcn-diff-block .meta { color: var(--pi-dim); }
-    .tcn-diff-block .added { background: rgba(127, 209, 160, .1); }
-    .tcn-diff-block .removed { background: rgba(248, 123, 123, .1); }
+    .tcn-diff-block .added { background: rgba(127, 209, 160, .06); }
+    .tcn-diff-block .removed { background: rgba(248, 123, 123, .06); }
   `;
 }
 

@@ -426,6 +426,7 @@ export class PromptEditor extends LitElement {
     const attachments = pending.length > 0 ? this.currentAttachments() : undefined;
     const delivery = this.effectiveAttachmentDelivery();
     this.resetComposer();
+    this.refocusComposer();
     // Sending is owned by the controller (it drives the chat activity dock and,
     // for folder mode, orchestrates the upload + reference rewrite), so this is
     // fire-and-forget here.
@@ -439,6 +440,13 @@ export class PromptEditor extends LitElement {
     this.completions = [];
     this.attachments = [];
     this.attachmentError = undefined;
+  }
+
+  private refocusComposer(): void {
+    requestAnimationFrame(() => {
+      this.syncEditorDoc();
+      this.focusInput();
+    });
   }
 
   static override styles = promptEditorStyles;

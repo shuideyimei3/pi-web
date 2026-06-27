@@ -1,7 +1,7 @@
 import type { ChatLine, ChatPart, ToolExecutionPart, ToolPreview } from "./components/shared";
 
 export function normalizeMessages(messages: unknown[]): ChatLine[] {
-  return coalesceToolExecutions(messages.flatMap(normalizeMessage)).filter((message) => message.parts.length > 0);
+  return removeStaleModelResponseFailures(coalesceToolExecutions(messages.flatMap(normalizeMessage)).filter((message) => message.parts.length > 0));
 }
 
 export function textMessage(role: ChatLine["role"], text: string): ChatLine {
@@ -56,6 +56,34 @@ export function normalizeMessage(message: unknown): ChatLine[] {
   const lines = visible.length > 0 ? [withMessageMeta({ role: displayRole, parts: visible, ...(source === undefined ? {} : { source }) }, message)] : [];
   const errorLine = assistantErrorLine(message);
   return errorLine === undefined ? lines : [...lines, withMessageMeta(errorLine, message)];
+}
+
+export function isModelResponseFailedLine(line: ChatLine): boolean {
+  if (line.role !== "system") return false;
+  return line.parts.some((part) => part.type === "text" && part.text.startsWith("Model response failed: "));
+}
+
+function removeStaleModelResponseFailures(messages: ChatLine[]): ChatLine[] {
+  const keep = new Array<boolean>(messages.length).fill(true);
+  let hasLaterSuccessfulAssistantInTurn = false;
+
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const line = messages[index];
+    if (line === undefined) continue;
+    if (line.role === "user") {
+      hasLaterSuccessfulAssistantInTurn = false;
+      continue;
+    }
+    if (hasLaterSuccessfulAssistantInTurn && isModelResponseFailedLine(line)) {
+      keep[index] = false;
+      continue;
+    }
+    if (line.role === "assistant" && line.parts.some((part) => part.type !== "empty" && part.type !== "toolCall")) {
+      hasLaterSuccessfulAssistantInTurn = true;
+    }
+  }
+
+  return messages.filter((_, index) => keep[index] === true);
 }
 
 function assistantErrorLine(message: unknown): ChatLine | undefined {

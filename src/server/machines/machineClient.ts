@@ -81,7 +81,8 @@ export class RemoteMachineClient implements MachineClient {
 
   private async fetchResponse(method: string, path: string, body: unknown, options: MachineRequestOptions): Promise<Response> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => { controller.abort(); }, options.timeoutMs ?? DEFAULT_REMOTE_REQUEST_TIMEOUT_MS);
+    const timeoutMs = options.timeoutMs ?? DEFAULT_REMOTE_REQUEST_TIMEOUT_MS;
+    const timeout = timeoutMs > 0 ? setTimeout(() => { controller.abort(); }, timeoutMs) : undefined;
     try {
       const requestBody = serializeRequestBody(method, body);
       const init: RequestInit = {
@@ -96,7 +97,7 @@ export class RemoteMachineClient implements MachineClient {
       if (isAbortError(error)) throw new RemoteMachineRequestError("Remote machine request timed out", 504);
       throw new RemoteMachineRequestError(error instanceof Error ? error.message : String(error), 502);
     } finally {
-      clearTimeout(timeout);
+      if (timeout !== undefined) clearTimeout(timeout);
     }
   }
 

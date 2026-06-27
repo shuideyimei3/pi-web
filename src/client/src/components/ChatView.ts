@@ -138,6 +138,7 @@ export class ChatView extends LitElement {
     this.scrollController.clearScheduledSave();
     this.suppressScrollSave = false;
     this.suppressLoadMoreRequests = false;
+    this.pinnedToBottom = true;
     this.pendingScrollRestoreSessionId = undefined;
     this.pendingScrollRestorePosition = undefined;
     this.prependRestoreToken += 1;
@@ -167,7 +168,7 @@ export class ChatView extends LitElement {
     if (changed.has("loadingMore") && !this.loadingMore) this.loadMoreRequested = false;
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
     if (changed.has("sessionId")) this.restoreScrollPosition();
-    if (!changed.has("sessionId") && changed.has("messages") && this.pinnedToBottom) this.scrollToBottom();
+    if (!changed.has("sessionId") && changed.has("messages") && this.pinnedToBottom) this.scrollToBottom(this.isSessionLive());
     if (changed.has("messages") || changed.has("messageStart") || changed.has("messageTotal") || changed.has("hasMore") || changed.has("loadingMore")) this.scheduleConversationRailUpdate();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestLoadMoreIfNeeded();
@@ -177,13 +178,14 @@ export class ChatView extends LitElement {
   override render() {
     const nodes = this.computedTimelineNodes();
     const assistantFooterKey = this.revealedAssistantFooterKey(nodes);
+    const streamingNodeKey = this.streamingNodeKey(nodes);
     return html`
       <div class="chat-wrap">
         ${this.renderConversationRail()}
         <div class="chat" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
           ${this.renderHistoryBoundary()}
           <timeline-layout>
-            ${nodes.map((node, index) => this.renderTimelineNode(node, index, node.key === assistantFooterKey))}
+            ${nodes.map((node, index) => this.renderTimelineNode(node, index, node.key === assistantFooterKey, node.key === streamingNodeKey))}
           </timeline-layout>
           ${this.renderQueuedMessages()}
           ${this.renderSessionActivity()}
@@ -262,7 +264,21 @@ export class ChatView extends LitElement {
     return this.isReceivingPartialStream || this.isCompacting || this.isSessionLive();
   }
 
-  private renderTimelineNode(node: TimelineNode, displayIndex: number, showAssistantFooter: boolean) {
+  /**
+   * Return the key of the single node that should render in streaming mode.
+   * Only the last assistant or thinking node gets streaming — all earlier
+   * nodes always render full markdown regardless of session state.
+   */
+  private streamingNodeKey(nodes: readonly TimelineNode[]): string | undefined {
+    if (!this.isSessionLive()) return undefined;
+    for (let index = nodes.length - 1; index >= 0; index--) {
+      const node = nodes[index];
+      if (node?.type === "assistant" || node?.type === "thinking") return node.key;
+    }
+    return undefined;
+  }
+
+  private renderTimelineNode(node: TimelineNode, displayIndex: number, showAssistantFooter: boolean, isStreamingNode: boolean) {
     const isLive = this.isSessionLive();
     const nodeStatus: TimelineNodeStatus = node.status;
     return html`
@@ -274,17 +290,17 @@ export class ChatView extends LitElement {
         data-index=${String(displayIndex)}
         data-scroll-anchor-id=${node.key}
       >
-        ${this.renderTimelineNodeContent(node, showAssistantFooter)}
+        ${this.renderTimelineNodeContent(node, showAssistantFooter, isStreamingNode)}
       </timeline-node-wrapper>
     `;
   }
 
-  private renderTimelineNodeContent(node: TimelineNode, showAssistantFooter: boolean) {
+  private renderTimelineNodeContent(node: TimelineNode, showAssistantFooter: boolean, isStreamingNode: boolean) {
     switch (node.type) {
       case "user":
         return this.renderUserNode(node);
       case "assistant":
-        return this.renderAssistantNode(node, showAssistantFooter);
+        return this.renderAssistantNode(node, showAssistantFooter, isStreamingNode);
       case "tool":
         return this.renderToolNode(node);
       case "error":
@@ -292,7 +308,7 @@ export class ChatView extends LitElement {
       case "bash":
         return this.renderBashNode(node);
       case "thinking":
-        return this.renderThinkingNode(node);
+        return this.renderThinkingNode(node, isStreamingNode);
       case "skill":
         return this.renderSkillNode(node);
       case "meta":
@@ -320,13 +336,13 @@ export class ChatView extends LitElement {
     `;
   }
 
-  private renderAssistantNode(node: TimelineNode, showFooter: boolean) {
+  private renderAssistantNode(node: TimelineNode, showFooter: boolean, streaming: boolean) {
     const textPart = node.parts.find((p): p is Extract<ChatPart, { type: "text" }> => p.type === "text");
     const meta = this.nodeMetaLabel(node);
     const key = node.key;
     return html`
       <div class="tl-assistant">
-        ${textPart ? html`<formatted-text .text=${textPart.text}></formatted-text>` : null}
+        ${textPart ? html`<formatted-text .text=${textPart.text} .streaming=${streaming}></formatted-text>` : null}
         ${this.renderNodeImages(node)}
         ${showFooter ? html`
           <div class="tl-assistant-footer">
@@ -388,12 +404,12 @@ export class ChatView extends LitElement {
     return html`<execution-log .stdout=${textPart.text}></execution-log>`;
   }
 
-  private renderThinkingNode(node: TimelineNode) {
+  private renderThinkingNode(node: TimelineNode, streaming: boolean) {
     const part = node.parts.find((p): p is Extract<ChatPart, { type: "thinking" }> => p.type === "thinking");
     if (!part) return null;
     return html`
       <collapsible-section summary="Thinking" .borderless=${true}>
-        <formatted-text .text=${part.text}></formatted-text>
+        <formatted-text .text=${part.text} .streaming=${streaming}></formatted-text>
       </collapsible-section>
     `;
   }
@@ -526,7 +542,7 @@ export class ChatView extends LitElement {
     if (!this.isCompacting) return null;
     return html`
       <aside class="session-activity compacting" aria-live="polite">
-        <strong>Compacting history…</strong>
+        <strong><span class="compacting-spinner"></span> Compacting history…</strong>
         <span>The agent is summarizing earlier context. New prompts will be queued until compaction finishes.</span>
         ${this.pendingMessageCount > 0 ? html`<small>${this.pendingMessageCount} queued ${this.pendingMessageCount === 1 ? "message" : "messages"}</small>` : null}
       </aside>
@@ -884,14 +900,16 @@ export class ChatView extends LitElement {
     return chat !== undefined && chat.scrollTop > 0;
   }
 
-  private scrollToBottom() {
+  private scrollToBottom(smooth = false, forceSmooth = false) {
     if (this.scrollToBottomFrame !== undefined) return;
     this.scrollToBottomFrame = requestAnimationFrame(() => {
       this.scrollToBottomFrame = undefined;
       const chat = this.chat;
       if (!chat) return;
       this.withSuppressedScrollSave(() => {
-        chat.scrollTop = chat.scrollHeight;
+        const distance = chat.scrollHeight - chat.scrollTop - chat.clientHeight;
+        if (smooth && (forceSmooth || distance < 800)) chat.scrollTo({ top: chat.scrollHeight, behavior: "smooth" });
+        else chat.scrollTop = chat.scrollHeight;
         this.lastScrollTop = chat.scrollTop;
         this.lastClientHeight = chat.clientHeight;
       });
@@ -904,10 +922,7 @@ export class ChatView extends LitElement {
     this.restoreScrollFrame = requestAnimationFrame(() => {
       this.restoreScrollFrame = undefined;
       if (this.sessionId !== sessionId) return;
-      this.withSuppressedScrollSave(() => {
-        const result = this.scrollController.restorePosition(sessionId, this.chat, this.scrollAnchorElements(), { fallbackToBottom: this.shouldFallbackToBottomForMissingAnchor() });
-        this.handleScrollRestoreResult(sessionId, result);
-      });
+      this.scrollToBottom(true, true);
     });
   }
 

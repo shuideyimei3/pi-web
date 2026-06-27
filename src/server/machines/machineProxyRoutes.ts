@@ -45,10 +45,11 @@ async function proxyHttpRequest(machines: MachineService, machineId: string, met
   }
 
   try {
-    const requestOptions = proxyRequestOptions(body, contentType);
+    const upstreamPath = remoteApiPath(machineId, requestUrl);
+    const requestOptions = proxyRequestOptions(body, contentType, upstreamPath);
     const upstream = requestOptions === undefined
-      ? await client.request(method, remoteApiPath(machineId, requestUrl), body)
-      : await client.request(method, remoteApiPath(machineId, requestUrl), body, requestOptions);
+      ? await client.request(method, upstreamPath, body)
+      : await client.request(method, upstreamPath, body, requestOptions);
     reply.code(upstream.statusCode);
     applySafeHeaders(reply, upstream.headers);
     if (upstream.body === undefined) return await reply.send();
@@ -84,10 +85,16 @@ function remoteApiPath(machineId: string, requestUrl: string): string {
   return `/api${compatPath}`;
 }
 
-function proxyRequestOptions(body: unknown, contentType: string | string[] | undefined): MachineRequestOptions | undefined {
-  if (!isRawProxyBody(body)) return undefined;
+function proxyRequestOptions(body: unknown, contentType: string | string[] | undefined, upstreamPath: string): MachineRequestOptions | undefined {
+  const options: MachineRequestOptions = isSsePath(upstreamPath) ? { timeoutMs: 0 } : {};
+  if (!isRawProxyBody(body)) return Object.keys(options).length === 0 ? undefined : options;
   const value = firstHeaderValue(contentType);
-  return value === undefined || value === "" ? undefined : { contentType: value };
+  if (value !== undefined && value !== "") options.contentType = value;
+  return Object.keys(options).length === 0 ? undefined : options;
+}
+
+function isSsePath(path: string): boolean {
+  return path.split("?", 1)[0]?.endsWith("/sse") === true;
 }
 
 function isRawProxyBody(body: unknown): boolean {

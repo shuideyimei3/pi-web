@@ -297,6 +297,10 @@ describe("PluginRegistry", () => {
     expect(registry.getThemes().map((theme) => ({ id: theme.id, colorScheme: theme.colorScheme }))).toEqual([
       { id: "themes:pi-web-dark", colorScheme: "dark" },
       { id: "themes:pi-web-light", colorScheme: "light" },
+      { id: "themes:ayu-mirage", colorScheme: "dark" },
+      { id: "themes:ayu-dark", colorScheme: "dark" },
+      { id: "themes:tokyo-night", colorScheme: "dark" },
+      { id: "themes:nord", colorScheme: "dark" },
       { id: "themes:classic", colorScheme: "dark" },
     ]);
     expect(registry.getThemePairs().map((pair) => ({ id: pair.id, light: pair.light, dark: pair.dark }))).toEqual([

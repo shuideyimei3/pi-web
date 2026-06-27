@@ -4,6 +4,7 @@ import { SessionDaemonClient } from "../../sessiond/sessionDaemonClient.js";
 
 export interface SessionProxyDaemon {
   request(method: string, path: string, body?: unknown): Promise<{ statusCode: number; headers: Record<string, string>; body: string }>;
+  streamGet(path: string): Promise<{ statusCode: number; headers: Record<string, string>; body: NodeJS.ReadableStream }>;
   connectWebSocket(path: string): WebSocket;
 }
 
@@ -24,6 +25,10 @@ export function registerSessionProxyRoutes(app: FastifyInstance, daemon: Session
   app.get(`${prefix}/sessiond/health`, (_request, reply) => proxy({ method: "GET", url: `${prefix}/health` }, reply));
   app.get(`${prefix}/sessiond/runtime`, (_request, reply) => proxy({ method: "GET", url: `${prefix}/runtime` }, reply));
 
+  app.get<{ Params: { sessionId: string } }>(`${prefix}/sessions/:sessionId/events/sse`, (request, reply) => proxyStreamGet(request.url, reply));
+  app.get(`${prefix}/sessions/events/sse`, (request, reply) => proxyStreamGet(request.url, reply));
+  app.get(`${prefix}/events/sse`, (request, reply) => proxyStreamGet(request.url, reply));
+
   app.get<{ Params: { sessionId: string } }>(`${prefix}/sessions/:sessionId/events`, { websocket: true }, (socket, request) => {
     bridgeSockets(socket, daemon.connectWebSocket(stripPrefix(request.url, prefix)));
   });
@@ -35,6 +40,18 @@ export function registerSessionProxyRoutes(app: FastifyInstance, daemon: Session
   app.get(`${prefix}/events`, { websocket: true }, (socket) => {
     bridgeSockets(socket, daemon.connectWebSocket("/events"));
   });
+
+  async function proxyStreamGet(url: string, reply: FastifyReply): Promise<FastifyReply | undefined> {
+    try {
+      const upstream = await daemon.streamGet(stripPrefix(url, prefix));
+      reply.code(upstream.statusCode);
+      applyStreamHeaders(reply, upstream.headers);
+      return await reply.send(upstream.body);
+    } catch (error) {
+      requestFailed(reply, error);
+      return undefined;
+    }
+  }
 
   app.all(`${prefix}/activity`, (request, reply) => proxy(request, reply));
   app.all(`${prefix}/auth`, (request, reply) => proxy(request, reply));
@@ -53,6 +70,15 @@ function stripPrefix(url: string, prefix: string): string {
 function parseJson(text: string): unknown {
   const value: unknown = JSON.parse(text);
   return value;
+}
+
+function applyStreamHeaders(reply: FastifyReply, headers: Record<string, string>): void {
+  const contentType = headers["content-type"];
+  if (contentType !== undefined && contentType !== "") reply.header("content-type", contentType);
+  const cacheControl = headers["cache-control"];
+  if (cacheControl !== undefined && cacheControl !== "") reply.header("cache-control", cacheControl);
+  const xAccelBuffering = headers["x-accel-buffering"];
+  if (xAccelBuffering !== undefined && xAccelBuffering !== "") reply.header("x-accel-buffering", xAccelBuffering);
 }
 
 function requestFailed(reply: FastifyReply, error: unknown): void {

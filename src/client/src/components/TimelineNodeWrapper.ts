@@ -33,8 +33,8 @@ export class TimelineNodeWrapper extends LitElement {
 
     .tl-content {
       min-width: 0;
-      padding-top: 4px;
-      padding-bottom: 20px;
+      padding-top: 2px;
+      padding-bottom: 8px;
     }
   `;
 }

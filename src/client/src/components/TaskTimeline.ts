@@ -116,7 +116,7 @@ export class TaskTimeline extends LitElement {
     :host { display: block; width: 100%; max-width: 100%; min-width: 0; }
     .timeline { display: grid; gap: 0; width: 100%; }
     .step { display: grid; gap: 8px; min-width: 0; }
-    .step-content { padding-bottom: 10px; min-width: 0; }
+    .step-content { padding-bottom: 4px; min-width: 0; }
     .step-header { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
     .step-label { color: var(--pi-text); font-size: 13px; }
     .step-status { font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
@@ -125,7 +125,7 @@ export class TaskTimeline extends LitElement {
     .step-status.success { color: var(--pi-success); }
     .step-status.error { color: var(--pi-danger); }
     .step-status.skipped { color: var(--pi-dim); }
-    .step-details { display: grid; gap: 2px; margin-top: 4px; }
+    .step-details { display: grid; gap: 1px; margin-top: 2px; }
     .tool-summary { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--pi-muted); padding: 1px 0; }
     .tool-name { color: var(--pi-text-secondary); font-weight: 500; }
     .tool-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }

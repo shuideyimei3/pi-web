@@ -193,8 +193,8 @@ export class ToolCallCard extends LitElement {
       border-color: rgba(139, 178, 255, .25);
       animation: codex-breathe 2s ease-in-out infinite;
     }
-    .tool-card.success { border-color: rgba(127, 209, 160, .2); }
-    .tool-card.error { border-color: rgba(248, 123, 123, .25); }
+    .tool-card.success { border-color: rgba(127, 209, 160, .12); }
+    .tool-card.error { border-color: rgba(248, 123, 123, .15); }
     .tool-card.expanded { gap: 8px; padding-bottom: 9px; }
 
     /* ── Header ── */
@@ -209,22 +209,22 @@ export class ToolCallCard extends LitElement {
     /* ── Status icon: Quantum Beacon ── */
 
     .tool-title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; flex: 1 1 auto; }
-    strong.tool-name { color: var(--pi-muted); font-size: 13px; font-weight: 600; }
+    strong.tool-name { color: var(--pi-dim); font-size: 13px; font-weight: 600; }
     .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-dim); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .path:hover { background: var(--pi-accent-ref-bg); border-radius: 2px; }
-    .summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: 13px; }
+    .summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-dim); font-size: 13px; }
 
     /* ── Meta ── */
-    .tool-meta { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; color: var(--pi-muted); font-size: 12px; }
+    .tool-meta { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; color: var(--pi-dim); font-size: 12px; }
     .diff-stats { display: inline-flex; gap: 2px; }
-    .added, .diff .added { color: var(--pi-success); }
-    .removed, .diff .removed { color: var(--pi-danger); }
+    .added, .diff .added { color: color-mix(in srgb, var(--pi-success) 50%, var(--pi-muted)); }
+    .removed, .diff .removed { color: color-mix(in srgb, var(--pi-danger) 50%, var(--pi-muted)); }
     .sep { opacity: .4; }
-    .edit-count { color: var(--pi-muted); }
+    .edit-count { color: var(--pi-dim); }
     .status-label { text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
-    .tool-card.success .status-label { color: color-mix(in srgb, var(--pi-success) 65%, var(--pi-muted)); }
-    .tool-card.error .status-label { color: color-mix(in srgb, var(--pi-danger) 65%, var(--pi-muted)); }
-    .tool-card.running .status-label { color: color-mix(in srgb, var(--pi-running) 65%, var(--pi-muted)); }
+    .tool-card.success .status-label { color: color-mix(in srgb, var(--pi-success) 45%, var(--pi-muted)); }
+    .tool-card.error .status-label { color: color-mix(in srgb, var(--pi-danger) 45%, var(--pi-muted)); }
+    .tool-card.running .status-label { color: color-mix(in srgb, var(--pi-running) 45%, var(--pi-muted)); }
     .chevron { font-size: 11px; opacity: .5; }
 
     /* ── Body (solid core, no backdrop-filter) ── */
@@ -267,8 +267,8 @@ export class ToolCallCard extends LitElement {
     .diff .hunk { color: var(--pi-accent-ref); background: var(--pi-accent-ref-bg); }
     .diff .file { color: var(--pi-dim); }
     .diff .meta { color: var(--pi-dim); }
-    .diff .added { background: rgba(127, 209, 160, .1); }
-    .diff .removed { background: rgba(248, 123, 123, .1); }
+    .diff .added { background: rgba(127, 209, 160, .06); }
+    .diff .removed { background: rgba(248, 123, 123, .06); }
     .show-more { justify-self: start; }
   `];
 }

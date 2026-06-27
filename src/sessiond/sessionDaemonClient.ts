@@ -1,4 +1,5 @@
 import http from "node:http";
+import { Readable } from "node:stream";
 import { WebSocket } from "ws";
 import { sessiondHttpUrl, sessiondSocketPath } from "./config.js";
 
@@ -21,6 +22,11 @@ export class SessionDaemonClient {
     return new WebSocket(`ws+unix:${this.socketPath}:${path}`);
   }
 
+  async streamGet(path: string): Promise<{ statusCode: number; headers: Record<string, string>; body: NodeJS.ReadableStream }> {
+    if (this.baseUrl !== undefined && this.baseUrl !== "") return this.streamUrl(path);
+    return this.streamSocket(path);
+  }
+
   private async requestUrl(method: string, path: string, payload?: string) {
     const init: RequestInit = { method };
     if (payload !== undefined && payload !== "") {
@@ -33,6 +39,31 @@ export class SessionDaemonClient {
       headers: Object.fromEntries(response.headers.entries()),
       body: await response.text(),
     };
+  }
+
+  private async streamUrl(path: string): Promise<{ statusCode: number; headers: Record<string, string>; body: NodeJS.ReadableStream }> {
+    const response = await fetch(new URL(path, this.baseUrl));
+    if (response.body === null) throw new Error("Session daemon stream response is empty");
+    return {
+      statusCode: response.status,
+      headers: Object.fromEntries(response.headers.entries()),
+      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- Node fetch returns a web stream that is runtime-compatible with Readable.fromWeb.
+      body: Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
+    };
+  }
+
+  private streamSocket(path: string): Promise<{ statusCode: number; headers: Record<string, string>; body: NodeJS.ReadableStream }> {
+    return new Promise((resolve, reject) => {
+      const request = http.request({ socketPath: this.socketPath, path, method: "GET" }, (response) => {
+        resolve({
+          statusCode: response.statusCode ?? 500,
+          headers: Object.fromEntries(Object.entries(response.headers).map(([key, value]) => [key, Array.isArray(value) ? value.join(", ") : value ?? ""])),
+          body: response,
+        });
+      });
+      request.on("error", reject);
+      request.end();
+    });
   }
 
   private requestSocket(method: string, path: string, payload?: string): Promise<{ statusCode: number; headers: Record<string, string>; body: string }> {

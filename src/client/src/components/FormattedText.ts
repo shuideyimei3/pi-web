@@ -1,19 +1,123 @@
 import { LitElement, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
-import { toSafeMarkdownHtml } from "../formatting/markdown";
+import { toSafeMarkdownHtml, toStreamingMarkdownHtml } from "../formatting/markdown";
+import { chatBatchRenderer } from "../utils/batchRenderer.js";
 import { formattedTextStyles } from "./shared";
 
+/**
+ * Renders markdown-formatted text with a streaming fast path.
+ *
+ * While streaming, complete markdown blocks are rendered incrementally and the
+ * still-changing tail is also parsed every frame. That lets in-progress tables,
+ * lists, code fences, and other markdown structures switch into formatted form as
+ * soon as their syntax is recognizable, instead of waiting for the answer to end.
+ *
+ * When streaming transitions true → false, a single full sanitize + code-block
+ * enhancement pass runs on the final text.
+ */
 @customElement("formatted-text")
 export class FormattedText extends LitElement {
   @property() text = "";
+  @property({ type: Boolean }) streaming = false;
+
+  private stableMarkdown = "";
+  private stableElement: HTMLDivElement | undefined;
+  private tailElement: HTMLDivElement | undefined;
+  private scheduledUpdate = false;
+  private readonly batchId = `formatted-${Math.random().toString(36).slice(2)}`;
 
   override render() {
+    if (this.streaming) {
+      return html`
+        <div class="formatted streaming" dir="auto" @click=${this.onFormattedClick}>
+          <div class="streaming-blocks"></div><div class="streaming-tail"></div>
+        </div>
+      `;
+    }
     return html`<div class="formatted" dir="auto" @click=${this.onFormattedClick}>${unsafeHTML(toSafeMarkdownHtml(this.text))}</div>`;
   }
 
-  override updated(): void {
-    this.enhanceCodeBlocks();
+  override firstUpdated(): void {
+    if (this.streaming) this.syncStreamingElements(true);
+  }
+
+  override updated(changed: Map<string, unknown>): void {
+    if (!this.streaming) {
+      if (changed.has("streaming")) this.cleanupStreamingState();
+      this.enhanceCodeBlocks();
+      return;
+    }
+
+    if (changed.has("streaming")) this.syncStreamingElements(true);
+    if (changed.has("text") || changed.has("streaming")) this.scheduleIncrementalUpdate();
+  }
+
+  override disconnectedCallback(): void {
+    this.cleanupStreamingState();
+    super.disconnectedCallback();
+  }
+
+  private syncStreamingElements(reset = false): void {
+    this.stableElement = this.renderRoot.querySelector<HTMLDivElement>(".streaming-blocks") ?? undefined;
+    this.tailElement = this.renderRoot.querySelector<HTMLDivElement>(".streaming-tail") ?? undefined;
+    if (!reset) return;
+    this.stableMarkdown = "";
+    if (this.stableElement !== undefined) this.stableElement.innerHTML = "";
+    if (this.tailElement !== undefined) this.tailElement.innerHTML = "";
+  }
+
+  private scheduleIncrementalUpdate(): void {
+    if (this.scheduledUpdate) return;
+    this.scheduledUpdate = true;
+
+    chatBatchRenderer.schedule(this.id || this.batchId, () => {
+      this.scheduledUpdate = false;
+      this.applyIncrementalUpdate();
+    });
+  }
+
+  private applyIncrementalUpdate(): void {
+    if (!this.streaming) return;
+    if (this.stableElement === undefined || this.tailElement === undefined) this.syncStreamingElements();
+    if (this.stableElement === undefined || this.tailElement === undefined) return;
+
+    const { stable, tail } = splitStreamingMarkdown(this.text);
+    this.renderStableMarkdown(stable);
+    this.renderTailMarkdown(tail);
+    this.scrollIntoViewIfNeeded();
+  }
+
+  private renderStableMarkdown(stable: string): void {
+    if (this.stableElement === undefined || stable === this.stableMarkdown) return;
+
+    if (stable.startsWith(this.stableMarkdown)) {
+      const delta = stable.slice(this.stableMarkdown.length);
+      if (delta !== "") this.stableElement.insertAdjacentHTML("beforeend", toStreamingMarkdownHtml(delta));
+    } else {
+      this.stableElement.innerHTML = toStreamingMarkdownHtml(stable);
+    }
+    this.stableMarkdown = stable;
+  }
+
+  private renderTailMarkdown(tail: string): void {
+    if (this.tailElement === undefined) return;
+    this.tailElement.innerHTML = tail === "" ? "" : toStreamingMarkdownHtml(tail);
+  }
+
+  private scrollIntoViewIfNeeded(): void {
+    const chat = this.closest(".chat");
+    if (!(chat instanceof HTMLElement)) return;
+
+    const isNearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 100;
+    if (isNearBottom) chat.scrollTo({ top: chat.scrollHeight, behavior: "smooth" });
+  }
+
+  private cleanupStreamingState(): void {
+    this.stableElement = undefined;
+    this.tailElement = undefined;
+    this.stableMarkdown = "";
+    this.scheduledUpdate = false;
   }
 
   private enhanceCodeBlocks(): void {
@@ -23,15 +127,6 @@ export class FormattedText extends LitElement {
       if (!(code instanceof HTMLElement)) return;
       const wrapper = document.createElement("div");
       wrapper.className = "code-block-wrapper";
-      // Detect language from class
-      const langClass = Array.from(code.classList).find(c => c.startsWith("language-"));
-      const lang = langClass?.replace("language-", "") ?? "";
-      if (lang !== "" && !isPlainTextLanguage(lang)) {
-        const langLabel = document.createElement("span");
-        langLabel.className = "code-lang-label";
-        langLabel.textContent = lang;
-        wrapper.append(langLabel);
-      }
       const button = document.createElement("button");
       button.type = "button";
       button.className = "code-copy-button";
@@ -95,9 +190,33 @@ export class FormattedText extends LitElement {
   static override styles = formattedTextStyles;
 }
 
-function isPlainTextLanguage(language: string): boolean {
-  const normalized = language.toLowerCase();
-  return normalized === "text" || normalized === "txt" || normalized === "plain" || normalized === "plaintext";
+function splitStreamingMarkdown(text: string): { stable: string; tail: string } {
+  let stableEnd = 0;
+  let offset = 0;
+  let inFence = false;
+  for (const line of linesWithEndings(text)) {
+    const fenceLine = isFenceLine(line);
+    if (fenceLine) inFence = !inFence;
+    offset += line.length;
+    if (!inFence && line.trim() === "") stableEnd = offset;
+    if (fenceLine && !inFence && line.endsWith("\n")) stableEnd = offset;
+  }
+
+  if (!inFence && text.length - stableEnd > 1600) {
+    const breakAt = text.lastIndexOf("\n", text.length - 1);
+    if (breakAt > stableEnd) stableEnd = breakAt + 1;
+  }
+
+  return { stable: text.slice(0, stableEnd), tail: text.slice(stableEnd) };
+}
+
+function linesWithEndings(text: string): string[] {
+  const matches = text.match(/[^\n]*(?:\n|$)/gu) ?? [];
+  return matches.at(-1) === "" ? matches.slice(0, -1) : matches;
+}
+
+function isFenceLine(line: string): boolean {
+  return /^\s*(```|~~~)/u.test(line);
 }
 
 async function writeClipboard(text: string): Promise<boolean> {

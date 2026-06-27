@@ -25,7 +25,7 @@ const { config } = effectivePiWebConfig();
 const app = Fastify({ logger: true, bodyLimit: maxUploadBytes(process.env, config) });
 await app.register(fastifyWebsocket);
 
-const eventHub = new SessionEventHub();
+const eventHub = new SessionEventHub({ flushIntervalMs: 16, maxBufferSize: 100 });
 const workspaceActivity = new WorkspaceActivityService(eventHub);
 const auth = new AuthService();
 const spawnTargets = spawnSessionsEnabled(process.env, config)

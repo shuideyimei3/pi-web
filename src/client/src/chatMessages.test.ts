@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendText, appendThinking, normalizeMessage, normalizeMessages, textMessage } from "./chatMessages";
+import { appendText, appendThinking, isModelResponseFailedLine, normalizeMessage, normalizeMessages, textMessage } from "./chatMessages";
 
 describe("chat message normalization", () => {
   it("normalizes simple text messages and drops empty content", () => {
@@ -51,6 +51,41 @@ describe("chat message normalization", () => {
     expect(normalizeMessage({ role: "assistant", content: [{ type: "text", text: "partial answer" }], stopReason: "error", errorMessage: "connection lost" })).toEqual([
       textMessage("assistant", "partial answer"),
       textMessage("system", "Model response failed: connection lost"),
+    ]);
+  });
+
+  it("removes stale model errors from history when a later assistant response succeeds in the same turn", () => {
+    expect(normalizeMessages([
+      { role: "user", content: "question" },
+      { role: "assistant", content: [], stopReason: "error", errorMessage: "429 too many requests" },
+      { role: "assistant", content: [{ type: "text", text: "answer after retry" }] },
+    ])).toEqual([
+      textMessage("user", "question"),
+      textMessage("assistant", "answer after retry"),
+    ]);
+  });
+
+  it("keeps final model errors from history when no later assistant response succeeds in the same turn", () => {
+    expect(normalizeMessages([
+      { role: "user", content: "question" },
+      { role: "assistant", content: [], stopReason: "error", errorMessage: "429 too many requests" },
+    ])).toEqual([
+      textMessage("user", "question"),
+      textMessage("system", "Model response failed: 429 too many requests"),
+    ]);
+  });
+
+  it("does not remove model errors across a later user boundary", () => {
+    expect(normalizeMessages([
+      { role: "user", content: "first question" },
+      { role: "assistant", content: [], stopReason: "error", errorMessage: "429 too many requests" },
+      { role: "user", content: "second question" },
+      { role: "assistant", content: [{ type: "text", text: "second answer" }] },
+    ])).toEqual([
+      textMessage("user", "first question"),
+      textMessage("system", "Model response failed: 429 too many requests"),
+      textMessage("user", "second question"),
+      textMessage("assistant", "second answer"),
     ]);
   });
 
@@ -136,5 +171,19 @@ describe("appendThinking", () => {
     expect(appendThinking([textMessage("assistant", "answer")], "plan")).toEqual([
       { role: "assistant", parts: [{ type: "text", text: "answer" }, { type: "thinking", text: "plan" }] },
     ]);
+  });
+});
+
+describe("isModelResponseFailedLine", () => {
+  it("identifies Model response failed system lines", () => {
+    expect(isModelResponseFailedLine(textMessage("system", "Model response failed: 500 empty_stream"))).toBe(true);
+  });
+
+  it("rejects non-system lines", () => {
+    expect(isModelResponseFailedLine(textMessage("assistant", "Model response failed: something"))).toBe(false);
+  });
+
+  it("rejects system lines without the prefix", () => {
+    expect(isModelResponseFailedLine(textMessage("system", "Some other error"))).toBe(false);
   });
 });

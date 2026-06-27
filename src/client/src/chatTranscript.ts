@@ -1,12 +1,12 @@
-import { appendText, appendThinking, normalizeMessage, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
+import { appendText, appendThinking, isModelResponseFailedLine, normalizeMessage, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
 import type { ChatLine, ToolExecutionPart } from "./components/shared";
 import { appendShellChunk, finalizeShellMessage, shellStartMessage } from "./shellMessages";
 import type { SessionUiEvent } from "./sessionSocket";
 
 export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent): ChatLine[] | undefined {
   if (event.type === "message.append") return appendNewMessage(messages, event.message);
-  if (event.type === "assistant.delta") return appendText(messages, "assistant", event.text);
-  if (event.type === "assistant.thinking.delta") return appendThinking(messages, event.text);
+  if (event.type === "assistant.delta") return appendText(clearStaleModelResponseFailed(messages, event.text), "assistant", event.text);
+  if (event.type === "assistant.thinking.delta") return appendThinking(clearStaleModelResponseFailed(messages, event.text), event.text);
   if (event.type === "tool.start") return appendToolExecutionStart(messages, event);
   if (event.type === "tool.update") return updateToolExecution(messages, event.toolCallId, (part) => mergeToolExecutionUpdate(part, event));
   if (event.type === "tool.end") return finalizeToolExecution(messages, event.toolCallId, event.toolName, summarizeArgs(event.content), event.text, event.isError, event.content, event.details);
@@ -31,7 +31,13 @@ function applyFinalMessage(messages: ChatLine[], rawMessage: unknown): ChatLine[
     .map((line) => line.role === "assistant" ? withoutToolCalls(line) : line)
     .filter((line) => line.parts.length > 0);
   if (displayEnded.length === 0) return messages;
-  return displayEnded.reduce((next, line) => applyFinalLine(next, line), messages);
+  // When a successful assistant message arrives (e.g. after a retry),
+  // remove any trailing "Model response failed" system lines that were
+  // produced by an earlier transient error so the UI no longer shows
+  // the stale error.
+  const hasSuccessfulAssistant = displayEnded.some((line) => line.role === "assistant");
+  const cleaned = hasSuccessfulAssistant ? removeTrailingModelResponseFailed(messages) : messages;
+  return displayEnded.reduce((next, line) => applyFinalLine(next, line), cleaned);
 }
 
 function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine): ChatLine[] {
@@ -45,6 +51,27 @@ function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine): ChatLine[
 
 function withoutToolCalls(message: ChatLine): ChatLine {
   return { ...message, parts: message.parts.filter((part) => part.type !== "toolCall") };
+}
+
+function removeTrailingModelResponseFailed(messages: ChatLine[]): ChatLine[] {
+  let end = messages.length;
+  while (end > 0) {
+    const line = messages[end - 1];
+    if (line === undefined || !isModelResponseFailedLine(line)) break;
+    end--;
+  }
+  if (end === messages.length) return messages;
+  return messages.slice(0, end);
+}
+
+/**
+ * When a retry starts producing content (non-empty delta), remove any
+ * trailing "Model response failed" system lines so the stale error
+ * disappears from the UI immediately.
+ */
+function clearStaleModelResponseFailed(messages: ChatLine[], delta: string): ChatLine[] {
+  if (delta === "") return messages;
+  return removeTrailingModelResponseFailed(messages);
 }
 
 function parseSkillReadPath(path: string | undefined): { name: string; path: string } | undefined {

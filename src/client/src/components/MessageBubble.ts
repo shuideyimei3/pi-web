@@ -134,7 +134,7 @@ export class MessageBubble extends LitElement {
 
   static override styles = css`
     :host { display: block; width: 100%; max-width: 100%; min-width: 0; }
-    .bubble { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; padding: 12px; border-radius: 0; border: 0; background: transparent; }
+    .bubble { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 8px; padding: 8px; border-radius: 0; border: 0; background: transparent; }
     .bubble.user { color: rgba(255, 255, 255, 0.85); }
     .bubble.assistant { background: transparent; }
     .bubble.system { background: var(--pi-danger-bg); }
@@ -147,13 +147,13 @@ export class MessageBubble extends LitElement {
     .system-avatar { background: var(--pi-danger-bg); color: var(--pi-danger); }
     .bash-avatar { background: var(--pi-success-bg); color: var(--pi-success); font-family: ui-monospace, monospace; }
     .tool-avatar { background: var(--pi-warning-surface); color: var(--pi-warning); }
-    .bubble-content { min-width: 0; display: grid; gap: 8px; }
+    .bubble-content { min-width: 0; display: grid; gap: 4px; }
     .role-label { display: none; }
     .part { max-width: 100%; min-width: 0; overflow: visible; }
-    .part + .part { margin-top: 8px; }
+    .part + .part { margin-top: 4px; }
     .tool-line { color: var(--pi-warning); font-size: 13px; }
     .summary { color: var(--pi-muted); margin-left: 6px; }
-    .part:is(details) { border-top: 1px solid rgba(255,255,255,0.04); padding-top: 8px; }
+    .part:is(details) { border-top: 1px solid rgba(255,255,255,0.04); padding-top: 4px; }
     .skill-invocation, .skill-read { border: 1px solid var(--pi-border); border-radius: 8px; background: transparent; padding: 8px 10px; }
     .skill-invocation > summary, .skill-read > strong { color: var(--pi-purple); }
     .skill-invocation > small, .skill-read > small { display: block; margin: 6px 0 0; color: var(--pi-muted); }

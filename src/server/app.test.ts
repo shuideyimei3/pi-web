@@ -916,6 +916,7 @@ function fakeSessionDaemon(): SessionProxyDaemon {
         body: JSON.stringify(captured),
       });
     },
+    streamGet: (path) => Promise.resolve({ statusCode: 200, headers: { "content-type": "text/event-stream" }, body: Readable.from([`data: ${JSON.stringify({ path })}\n\n`]) }),
     connectWebSocket: () => { throw new Error("WebSocket not configured for test"); },
   };
 }

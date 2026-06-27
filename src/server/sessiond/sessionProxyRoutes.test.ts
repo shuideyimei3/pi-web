@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
 import { WebSocket, WebSocketServer } from "ws";
@@ -70,6 +71,11 @@ class FakeSessionDaemon {
   request(method: string, path: string, body?: unknown): Promise<{ statusCode: number; headers: Record<string, string>; body: string }> {
     this.requests.push({ method, path, body });
     return Promise.resolve({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify({ ok: true }) });
+  }
+
+  streamGet(path: string): Promise<{ statusCode: number; headers: Record<string, string>; body: NodeJS.ReadableStream }> {
+    this.requests.push({ method: "GET", path, body: undefined });
+    return Promise.resolve({ statusCode: 200, headers: { "content-type": "text/event-stream" }, body: Readable.from(["data: {\"ok\":true}\n\n"]) });
   }
 
   connectWebSocket(path: string): WebSocket {

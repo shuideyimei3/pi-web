@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { normalizeRequestCwd } from "../workingDirectory.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
+import { createSseSocket } from "../realtime/sse.js";
 import type { PiSessionRef, PiSessionService } from "./piSessionService.js";
 
 type SessionLookup = string | PiSessionRef;
@@ -246,6 +247,20 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: PiSessionS
     } catch (error) {
       return reply.code(mutationErrorStatus(error)).send({ error: errorMessage(error) });
     }
+  });
+
+  app.get<{ Params: { sessionId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/events/sse`, (request, reply) => {
+    // Only the id matters for event subscription; cwd is intentionally ignored
+    // so a malformed value cannot throw inside the streaming handler.
+    eventHub.add(request.params.sessionId, createSseSocket(reply));
+  });
+
+  app.get(`${prefix}/sessions/events/sse`, (_request, reply) => {
+    eventHub.addGlobal(createSseSocket(reply));
+  });
+
+  app.get(`${prefix}/events/sse`, (_request, reply) => {
+    eventHub.addGlobal(createSseSocket(reply));
   });
 
   app.get<{ Params: { sessionId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/events`, { websocket: true }, (socket, request) => {

@@ -213,6 +213,9 @@ export class PiWebApp extends LitElement {
 
   protected override willUpdate(): void {
     this.toggleAttribute("pwa-display-mode", this.appShell.isPwaDisplayMode);
+    const theme = this.resolveCurrentThemePreference().activeTheme;
+    this.setAttribute("active-theme", this.activeThemeId);
+    this.dataset["colorScheme"] = theme?.colorScheme ?? "dark";
   }
 
   override connectedCallback(): void {
