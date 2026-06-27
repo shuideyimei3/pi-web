@@ -355,24 +355,54 @@ export class WorkspaceFilesPanel extends LitElement {
       .upload-file-main span, .upload-file-main small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .upload-file-status { font-size: 12px; white-space: nowrap; }
       .upload-actions { justify-content: end; }
-      .dialog-backdrop { position: fixed; inset: 0; z-index: 100; box-sizing: border-box; display: grid; place-items: center; padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); background: var(--pi-overlay); }
-      .upload-dialog { box-sizing: border-box; width: min(560px, 100%); max-height: min(720px, 100%); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--pi-border); border-radius: 14px; background: var(--pi-bg); box-shadow: 0 18px 70px var(--pi-shadow-strong); }
-      .upload-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--pi-border-muted); }
-      .upload-dialog h2 { margin: 2px 0 0; font-size: 18px; line-height: 1.2; }
+      .dialog-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        box-sizing: border-box;
+        display: grid;
+        place-items: center;
+        padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+        background: color-mix(in srgb, #000 62%, transparent);
+        backdrop-filter: blur(18px) saturate(115%);
+        -webkit-backdrop-filter: blur(18px) saturate(115%);
+      }
+      .upload-dialog {
+        --codex-dialog-panel: color-mix(in srgb, var(--pi-surface) 78%, var(--pi-bg) 22%);
+        --codex-dialog-panel-hover: color-mix(in srgb, var(--pi-text) 9%, transparent);
+        --codex-dialog-border: color-mix(in srgb, var(--pi-border) 72%, #fff 10%);
+        --codex-dialog-hairline: color-mix(in srgb, var(--pi-border-muted) 70%, transparent);
+        --codex-dialog-focus: color-mix(in srgb, var(--pi-text-bright) 34%, var(--pi-accent) 66%);
+        box-sizing: border-box;
+        width: min(560px, 100%);
+        max-height: min(720px, 100%);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid var(--codex-dialog-border);
+        border-radius: 18px;
+        background: linear-gradient(180deg, color-mix(in srgb, var(--pi-text-bright) 4%, transparent), transparent 80px), color-mix(in srgb, var(--pi-bg) 88%, #111 12%);
+        box-shadow: 0 24px 80px color-mix(in srgb, #000 62%, transparent), 0 1px 0 color-mix(in srgb, #fff 8%, transparent) inset;
+      }
+      .upload-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--codex-dialog-hairline); background: color-mix(in srgb, var(--codex-dialog-panel) 58%, transparent); }
+      .upload-dialog h2 { margin: 2px 0 0; color: var(--pi-text-bright); font-size: 18px; line-height: 1.2; }
       .eyebrow { color: var(--pi-muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
-      .close-button { font-size: 20px; line-height: 1; padding: 4px 9px; }
-      form { min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow: auto; padding: 16px; }
-      form > label { display: grid; gap: 6px; }
+      .close-button { border-color: transparent; background: transparent; color: var(--pi-muted); font-size: 20px; line-height: 1; padding: 4px 9px; }
+      .close-button:hover, .close-button:focus { color: var(--pi-text-bright); background: var(--codex-dialog-panel-hover); }
+      form { min-height: 0; display: flex; flex-direction: column; gap: 13px; overflow: auto; padding: 16px; scrollbar-width: thin; }
+      form > label { display: grid; gap: 7px; }
       form > label > span, .review-files > strong { font-weight: 600; }
-      input[type="text"], form > label > input:not([type]) { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 8px 9px; font: inherit; }
-      input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+      input[type="text"], form > label > input:not([type]) { box-sizing: border-box; width: 100%; border: 1px solid var(--codex-dialog-border); border-radius: 13px; background: var(--codex-dialog-panel); color: var(--pi-text); padding: 10px 12px; outline: none; font: inherit; box-shadow: 0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset; }
+      input:focus-visible { outline: 2px solid var(--codex-dialog-focus); outline-offset: 2px; }
       .dialog-options { display: grid; gap: 8px; }
       .dialog-options label { display: flex; align-items: center; gap: 8px; color: var(--pi-text); }
-      .review-files { display: grid; gap: 6px; min-height: 0; max-height: 180px; overflow: auto; border: 1px solid var(--pi-border-muted); border-radius: 8px; padding: 8px; }
+      .review-files { display: grid; gap: 6px; min-height: 0; max-height: 180px; overflow: auto; border: 1px solid var(--codex-dialog-border); border-radius: 13px; background: color-mix(in srgb, var(--codex-dialog-panel) 82%, transparent); padding: 10px; scrollbar-width: thin; }
       .review-file { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
       .review-file span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .dialog-error { border: 1px solid var(--pi-danger); border-radius: 8px; background: color-mix(in srgb, var(--pi-danger) 10%, transparent); color: var(--pi-danger); padding: 9px; line-height: 1.35; overflow-wrap: anywhere; }
+      .dialog-error { border: 1px solid color-mix(in srgb, var(--pi-danger) 70%, var(--codex-dialog-border)); border-radius: 12px; background: color-mix(in srgb, var(--pi-danger) 10%, transparent); color: var(--pi-danger); padding: 10px 11px; line-height: 1.35; overflow-wrap: anywhere; }
       footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+      footer button { border-radius: 12px; }
+      footer button[type="submit"] { border-color: color-mix(in srgb, var(--pi-accent) 72%, var(--codex-dialog-border)); background: color-mix(in srgb, var(--pi-accent) 18%, var(--codex-dialog-panel)); color: var(--pi-text-bright); }
     `,
   ];
 }

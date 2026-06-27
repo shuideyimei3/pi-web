@@ -92,7 +92,7 @@ export class MachineDialog extends LitElement {
     const canSubmit = this.validInput() !== undefined && !this.submitting;
     return html`
       <div class="backdrop" @click=${() => this.onCancel?.()}>
-        <section @click=${(event: Event) => { event.stopPropagation(); }}>
+        <section role="dialog" aria-modal="true" aria-label="Add machine" @click=${(event: Event) => { event.stopPropagation(); }}>
           <form @submit=${(event: SubmitEvent) => { this.handleSubmit(event); }} @keydown=${(event: KeyboardEvent) => { this.handleKeyDown(event); }}>
             <header>
               <strong>Add machine</strong>
@@ -129,25 +129,46 @@ export class MachineDialog extends LitElement {
   }
 
   static override styles = css`
-    :host { position: fixed; inset: 0; z-index: 30; color: var(--pi-text); font: 14px system-ui, sans-serif; }
-    .backdrop { display: grid; place-items: start center; width: 100%; height: 100%; padding-top: min(12vh, 90px); box-sizing: border-box; background: var(--pi-overlay); }
-    section { width: min(560px, calc(100vw - 40px)); max-height: min(640px, calc(100vh - 40px)); border: 1px solid var(--pi-border); border-radius: 12px; background: var(--pi-bg); box-shadow: 0 20px 60px var(--pi-shadow-strong); overflow: hidden; }
+    :host {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      color: var(--pi-text);
+      font: 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --codex-dialog-backdrop: color-mix(in srgb, #000 62%, transparent);
+      --codex-dialog-surface: color-mix(in srgb, var(--pi-bg) 88%, #111 12%);
+      --codex-dialog-panel: color-mix(in srgb, var(--pi-surface) 78%, var(--pi-bg) 22%);
+      --codex-dialog-panel-hover: color-mix(in srgb, var(--pi-text) 9%, transparent);
+      --codex-dialog-border: color-mix(in srgb, var(--pi-border) 72%, #fff 10%);
+      --codex-dialog-hairline: color-mix(in srgb, var(--pi-border-muted) 70%, transparent);
+      --codex-dialog-focus: color-mix(in srgb, var(--pi-text-bright) 34%, var(--pi-accent) 66%);
+    }
+    .backdrop { display: grid; place-items: start center; width: 100%; height: 100dvh; box-sizing: border-box; padding: min(12dvh, 92px) 20px max(20px, env(safe-area-inset-bottom)); background: var(--codex-dialog-backdrop); backdrop-filter: blur(18px) saturate(115%); -webkit-backdrop-filter: blur(18px) saturate(115%); overflow: hidden; }
+    section { width: min(560px, 100%); max-height: min(640px, calc(100dvh - min(12dvh, 92px) - max(20px, env(safe-area-inset-bottom)))); border: 1px solid var(--codex-dialog-border); border-radius: 18px; background: linear-gradient(180deg, color-mix(in srgb, var(--pi-text-bright) 4%, transparent), transparent 80px), var(--codex-dialog-surface); box-shadow: 0 24px 80px color-mix(in srgb, #000 62%, transparent), 0 1px 0 color-mix(in srgb, #fff 8%, transparent) inset; overflow: hidden; }
     form { display: flex; flex-direction: column; max-height: inherit; min-height: 0; }
-    header, footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--pi-border); }
-    footer { border-top: 1px solid var(--pi-border); border-bottom: 0; justify-content: end; }
-    .body { display: grid; gap: 8px; padding: 12px; min-height: 0; overflow: auto; }
-    label { display: grid; gap: 6px; color: var(--pi-muted); }
-    input { box-sizing: border-box; width: 100%; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-bg); color: var(--pi-text); padding: 9px; font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    input:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 1px; }
+    header, footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--codex-dialog-hairline); background: color-mix(in srgb, var(--codex-dialog-panel) 58%, transparent); }
+    header strong { color: var(--pi-text-secondary); font-size: 13px; font-weight: 650; letter-spacing: .01em; }
+    footer { border-top: 1px solid var(--codex-dialog-hairline); border-bottom: 0; justify-content: end; }
+    .body { display: grid; gap: 10px; min-height: 0; overflow: auto; padding: 16px; }
+    label { display: grid; gap: 7px; color: var(--pi-muted); }
+    input { box-sizing: border-box; width: 100%; border: 1px solid var(--codex-dialog-border); border-radius: 13px; background: var(--codex-dialog-panel); color: var(--pi-text); padding: 10px 12px; outline: none; font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; box-shadow: 0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset; }
+    input:focus-visible { outline: 2px solid var(--codex-dialog-focus); outline-offset: 2px; }
     .hint { color: var(--pi-muted); }
-    .intro { margin: 4px 0 0; line-height: 1.4; }
+    .intro { margin: 4px 0 0; line-height: 1.45; }
     .optional { color: var(--pi-muted); font-weight: 400; }
     .field-error { color: var(--pi-danger); }
-    .dialog-error { border: 1px solid var(--pi-danger); border-radius: 8px; background: color-mix(in srgb, var(--pi-danger) 10%, transparent); color: var(--pi-danger); padding: 9px; line-height: 1.35; }
-    button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
-    header button { border: 0; background: transparent; color: var(--pi-muted); font-size: 22px; padding: 0 8px; }
-    .primary { border-color: var(--pi-success-border); background: var(--pi-success-border); }
+    .dialog-error { border: 1px solid color-mix(in srgb, var(--pi-danger) 70%, var(--codex-dialog-border)); border-radius: 12px; background: color-mix(in srgb, var(--pi-danger) 10%, transparent); color: var(--pi-danger); padding: 10px 11px; line-height: 1.35; }
+    button { border: 1px solid var(--codex-dialog-border); border-radius: 12px; background: var(--codex-dialog-panel); color: var(--pi-text); padding: 8px 11px; font: inherit; cursor: pointer; }
+    button:hover, button:focus { background: var(--codex-dialog-panel-hover); }
+    button:focus-visible { outline: 2px solid var(--codex-dialog-focus); outline-offset: 2px; }
+    header button { display: grid; place-items: center; width: 30px; height: 30px; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: 20px; line-height: 1; }
+    header button:hover, header button:focus { color: var(--pi-text-bright); background: var(--codex-dialog-panel-hover); }
+    .primary { border-color: color-mix(in srgb, var(--pi-accent) 72%, var(--codex-dialog-border)); background: color-mix(in srgb, var(--pi-accent) 18%, var(--codex-dialog-panel)); color: var(--pi-text-bright); }
     button:disabled { opacity: .5; cursor: not-allowed; }
+    @media (max-width: 640px) {
+      .backdrop { padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); }
+      section { max-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom))); border-radius: 16px; }
+    }
   `;
 }
 

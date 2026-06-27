@@ -200,29 +200,44 @@ export class SettingsDialog extends LitElement {
   }
 
   static override styles = css`
-    :host { position: fixed; inset: 0; z-index: 30; color: var(--pi-text); font: 14px system-ui, sans-serif; }
-    .backdrop { box-sizing: border-box; width: 100%; height: 100dvh; display: grid; place-items: center; padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); background: var(--pi-overlay); overflow: hidden; }
-    .settings-shell { width: min(980px, 100%); max-height: min(760px, 100%); min-height: min(620px, 100%); display: grid; grid-template-rows: auto minmax(0, 1fr); border: 1px solid var(--pi-border); border-radius: 14px; background: var(--pi-bg); box-shadow: 0 20px 60px var(--pi-shadow-strong); overflow: hidden; }
-    .settings-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--pi-border); }
+    :host {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      color: var(--pi-text);
+      font: 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --codex-dialog-backdrop: color-mix(in srgb, #000 62%, transparent);
+      --codex-dialog-surface: color-mix(in srgb, var(--pi-bg) 88%, #111 12%);
+      --codex-dialog-panel: color-mix(in srgb, var(--pi-surface) 78%, var(--pi-bg) 22%);
+      --codex-dialog-panel-hover: color-mix(in srgb, var(--pi-text) 9%, transparent);
+      --codex-dialog-border: color-mix(in srgb, var(--pi-border) 72%, #fff 10%);
+      --codex-dialog-hairline: color-mix(in srgb, var(--pi-border-muted) 70%, transparent);
+      --codex-dialog-focus: color-mix(in srgb, var(--pi-text-bright) 34%, var(--pi-accent) 66%);
+    }
+    .backdrop { box-sizing: border-box; width: 100%; height: 100dvh; display: grid; place-items: center; padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); background: var(--codex-dialog-backdrop); backdrop-filter: blur(18px) saturate(115%); -webkit-backdrop-filter: blur(18px) saturate(115%); overflow: hidden; }
+    .settings-shell { width: min(980px, 100%); max-height: min(760px, 100%); min-height: min(620px, 100%); display: grid; grid-template-rows: auto minmax(0, 1fr); border: 1px solid var(--codex-dialog-border); border-radius: 18px; background: linear-gradient(180deg, color-mix(in srgb, var(--pi-text-bright) 4%, transparent), transparent 96px), var(--codex-dialog-surface); box-shadow: 0 24px 80px color-mix(in srgb, #000 62%, transparent), 0 1px 0 color-mix(in srgb, #fff 8%, transparent) inset; overflow: hidden; }
+    .settings-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--codex-dialog-hairline); background: color-mix(in srgb, var(--codex-dialog-panel) 58%, transparent); }
     .eyebrow { display: block; color: var(--pi-muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-    h1 { margin: 0; font-size: 20px; line-height: 1.2; }
-    button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; font: inherit; cursor: pointer; }
-    .close-button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: 24px; }
-    .close-button:hover, .close-button:focus { color: var(--pi-text); background: var(--pi-surface-hover); }
+    h1 { margin: 0; color: var(--pi-text-bright); font-size: 20px; line-height: 1.2; }
+    button { border: 1px solid var(--codex-dialog-border); border-radius: 12px; background: var(--codex-dialog-panel); color: var(--pi-text); padding: 8px 11px; font: inherit; cursor: pointer; }
+    button:hover, button:focus { background: var(--codex-dialog-panel-hover); }
+    button:focus-visible { outline: 2px solid var(--codex-dialog-focus); outline-offset: 2px; }
+    .close-button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; background: transparent; color: var(--pi-muted); padding: 0; font-size: 23px; line-height: 1; }
+    .close-button:hover, .close-button:focus { color: var(--pi-text-bright); background: var(--codex-dialog-panel-hover); }
     .settings-body { min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
-    .settings-nav { min-height: 0; padding: 10px; border-right: 1px solid var(--pi-border); background: var(--pi-surface); overflow: auto; }
+    .settings-nav { min-height: 0; padding: 10px; border-right: 1px solid var(--codex-dialog-hairline); background: color-mix(in srgb, var(--codex-dialog-panel) 72%, transparent); overflow: auto; scrollbar-width: thin; }
     .settings-nav button { display: grid; gap: 2px; width: 100%; margin: 0 0 6px; text-align: left; border-color: transparent; background: transparent; }
-    .settings-nav button:hover, .settings-nav button:focus { background: var(--pi-surface-hover); }
-    .settings-nav button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
+    .settings-nav button:hover, .settings-nav button:focus { background: var(--codex-dialog-panel-hover); }
+    .settings-nav button.selected { border-color: color-mix(in srgb, var(--pi-accent) 72%, var(--codex-dialog-border)); background: color-mix(in srgb, var(--pi-accent) 16%, var(--codex-dialog-panel)); }
     .settings-nav small { color: var(--pi-muted); }
-    .settings-content { min-width: 0; min-height: 0; overflow: auto; padding: 18px; }
+    .settings-content { min-width: 0; min-height: 0; overflow: auto; padding: 18px; scrollbar-width: thin; }
 
     @media (max-width: 760px) {
       .backdrop { padding: 0; place-items: stretch; }
       .settings-shell { width: 100%; height: 100dvh; max-height: none; min-height: 0; border: 0; border-radius: 0; }
       .settings-header { padding: max(12px, env(safe-area-inset-top)) 12px 12px; }
       .settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-      .settings-nav { display: flex; gap: 8px; padding: 8px; border-right: 0; border-bottom: 1px solid var(--pi-border); overflow-x: auto; overflow-y: hidden; }
+      .settings-nav { display: flex; gap: 8px; padding: 8px; border-right: 0; border-bottom: 1px solid var(--codex-dialog-hairline); overflow-x: auto; overflow-y: hidden; }
       .settings-nav button { flex: 0 0 auto; width: auto; min-width: 128px; margin: 0; }
       .settings-content { padding: 14px 12px calc(18px + env(safe-area-inset-bottom)); }
     }

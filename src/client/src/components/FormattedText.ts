@@ -23,6 +23,15 @@ export class FormattedText extends LitElement {
       if (!(code instanceof HTMLElement)) return;
       const wrapper = document.createElement("div");
       wrapper.className = "code-block-wrapper";
+      // Detect language from class
+      const langClass = Array.from(code.classList).find(c => c.startsWith("language-"));
+      const lang = langClass?.replace("language-", "") ?? "";
+      if (lang !== "" && !isPlainTextLanguage(lang)) {
+        const langLabel = document.createElement("span");
+        langLabel.className = "code-lang-label";
+        langLabel.textContent = lang;
+        wrapper.append(langLabel);
+      }
       const button = document.createElement("button");
       button.type = "button";
       button.className = "code-copy-button";
@@ -32,6 +41,25 @@ export class FormattedText extends LitElement {
       icon.setAttribute("aria-hidden", "true");
       icon.textContent = "⧉";
       button.append(icon);
+      // Count lines for collapsibility
+      const lineCount = code.textContent.split("\n").length;
+      if (lineCount > 20) {
+        const collapseButton = document.createElement("button");
+        collapseButton.type = "button";
+        collapseButton.className = "code-collapse-button";
+        collapseButton.title = "Collapse code block";
+        collapseButton.setAttribute("aria-label", "Collapse code block");
+        collapseButton.textContent = "Collapse";
+        collapseButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const pre = wrapper.querySelector("pre");
+          if (pre) {
+            pre.style.maxHeight = pre.style.maxHeight === "" ? "400px" : "";
+            collapseButton.textContent = pre.style.maxHeight === "" ? "Collapse" : "Expand";
+          }
+        });
+        wrapper.append(collapseButton);
+      }
       element.before(wrapper);
       wrapper.append(element, button);
     });
@@ -65,6 +93,11 @@ export class FormattedText extends LitElement {
   }
 
   static override styles = formattedTextStyles;
+}
+
+function isPlainTextLanguage(language: string): boolean {
+  const normalized = language.toLowerCase();
+  return normalized === "text" || normalized === "txt" || normalized === "plain" || normalized === "plaintext";
 }
 
 async function writeClipboard(text: string): Promise<boolean> {

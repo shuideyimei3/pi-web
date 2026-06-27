@@ -145,17 +145,19 @@ export class AuthDialog extends LitElement {
   }
 
   static override styles = [commandPickerStyles, css`
-    .form { display: grid; gap: 12px; padding: 14px; overflow: auto; }
-    .form p { margin: 0; color: var(--pi-text-secondary); overflow-wrap: anywhere; }
+    .form { display: grid; gap: 13px; padding: 16px; overflow: auto; scrollbar-width: thin; }
+    .form p { margin: 0; color: var(--pi-text-secondary); line-height: 1.45; overflow-wrap: anywhere; }
     .form a { color: var(--pi-accent); overflow-wrap: anywhere; }
-    .form code { border: 1px solid var(--pi-border); border-radius: 4px; background: var(--pi-surface); padding: 1px 4px; }
+    .form code { border: 1px solid var(--codex-dialog-border); border-radius: 6px; background: var(--codex-dialog-panel); padding: 1px 5px; }
     label { color: var(--pi-muted); }
+    .form input { box-sizing: border-box; width: 100%; margin: 0; border: 1px solid var(--codex-dialog-border); border-radius: 13px; background: var(--codex-dialog-panel); padding: 10px 12px; }
     .actions { display: flex; justify-content: flex-end; gap: 8px; }
-    .actions button, .inline-options button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; }
-    .actions button.primary { border-color: var(--pi-success-border); background: var(--pi-success-surface); color: var(--pi-success); }
+    .actions button, .inline-options button { border: 1px solid var(--codex-dialog-border); border-radius: 12px; background: var(--codex-dialog-panel); color: var(--pi-text); padding: 8px 11px; }
+    .actions button:hover, .inline-options button:hover { background: var(--codex-dialog-panel-hover); }
+    .actions button.primary { border-color: color-mix(in srgb, var(--pi-accent) 72%, var(--codex-dialog-border)); background: color-mix(in srgb, var(--pi-accent) 18%, var(--codex-dialog-panel)); color: var(--pi-text-bright); }
     .actions button:disabled { opacity: .6; cursor: wait; }
     .warning { color: var(--pi-warning); }
-    .error-text { color: var(--pi-danger); }
+    .error-text { border: 1px solid color-mix(in srgb, var(--pi-danger) 70%, var(--codex-dialog-border)); border-radius: 12px; background: color-mix(in srgb, var(--pi-danger) 10%, transparent); color: var(--pi-danger); padding: 10px 11px; }
     .progress { margin: 0; padding-left: 18px; color: var(--pi-muted); }
     .inline-options { display: grid; gap: 8px; }
     em { color: var(--pi-success); font-style: normal; font-size: 12px; }

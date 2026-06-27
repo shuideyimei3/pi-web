@@ -36,6 +36,17 @@ const classicTokens = {
   "--pi-bg-overlay": "#0d1117e6",
   "--pi-success-bg-overlay": "#0f1b12ee",
   "--pi-terminal-selection": "#264f78",
+  "--pi-accent-ref": "#e49ec4",
+  "--pi-accent-ref-bg": "rgba(240, 180, 219, 0.08)",
+  "--pi-running": "#8bb2ff",
+  "--pi-running-bg": "rgba(139, 178, 255, 0.08)",
+  "--pi-glass-bg": "rgba(255, 255, 255, 0.035)",
+  "--pi-glass-border": "rgba(255, 255, 255, 0.08)",
+  "--pi-glass-highlight": "rgba(255, 255, 255, 0.06)",
+  "--pi-glass-blur": "blur(20px) saturate(140%)",
+  "--pi-solid-bg": "rgba(7, 8, 11, 0.45)",
+  "--pi-solid-bg-strong": "rgba(7, 8, 11, 0.72)",
+  "--pi-danger-bg": "rgba(248, 123, 123, 0.08)",
 } satisfies ThemeTokens;
 
 const piWebDarkTokens = {
@@ -74,6 +85,17 @@ const piWebDarkTokens = {
   "--pi-bg-overlay": "#070912e6",
   "--pi-success-bg-overlay": "#071e22ee",
   "--pi-terminal-selection": "#3d4a78",
+  "--pi-accent-ref": "#e49ec4",
+  "--pi-accent-ref-bg": "rgba(240, 180, 219, 0.08)",
+  "--pi-running": "#8bb2ff",
+  "--pi-running-bg": "rgba(139, 178, 255, 0.08)",
+  "--pi-glass-bg": "rgba(255, 255, 255, 0.035)",
+  "--pi-glass-border": "rgba(255, 255, 255, 0.08)",
+  "--pi-glass-highlight": "rgba(255, 255, 255, 0.06)",
+  "--pi-glass-blur": "blur(20px) saturate(140%)",
+  "--pi-solid-bg": "rgba(7, 8, 11, 0.45)",
+  "--pi-solid-bg-strong": "rgba(7, 8, 11, 0.72)",
+  "--pi-danger-bg": "rgba(248, 123, 123, 0.08)",
 } satisfies ThemeTokens;
 
 const piWebLightTokens = {
@@ -112,6 +134,17 @@ const piWebLightTokens = {
   "--pi-bg-overlay": "#f7f1e6e6",
   "--pi-success-bg-overlay": "#e1f4efee",
   "--pi-terminal-selection": "#8d7b64",
+  "--pi-accent-ref": "#9e64b8",
+  "--pi-accent-ref-bg": "rgba(158, 100, 184, 0.08)",
+  "--pi-running": "#3d6ab8",
+  "--pi-running-bg": "rgba(61, 106, 184, 0.08)",
+  "--pi-glass-bg": "rgba(0, 0, 0, 0.03)",
+  "--pi-glass-border": "rgba(0, 0, 0, 0.08)",
+  "--pi-glass-highlight": "rgba(255, 255, 255, 0.4)",
+  "--pi-glass-blur": "blur(20px) saturate(140%)",
+  "--pi-solid-bg": "rgba(255, 255, 255, 0.6)",
+  "--pi-solid-bg-strong": "rgba(255, 255, 255, 0.8)",
+  "--pi-danger-bg": "rgba(181, 29, 73, 0.08)",
 } satisfies ThemeTokens;
 
 export const themePackPlugin: PiWebPlugin = {

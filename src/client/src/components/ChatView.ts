@@ -1,6 +1,5 @@
 import { LitElement, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
-import { repeat } from "lit/directives/repeat.js";
 import { ChatDisclosureController } from "../chatDisclosure";
 import { groupChatMessages, summarizeChatGroup, type ChatGroup } from "../chatGroups";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
@@ -9,12 +8,25 @@ import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle
 import type { SessionActivity, SessionStatus } from "../api";
 import type { ChatLine, ChatPart } from "./shared";
 import { chatStyles } from "./shared";
+import { renderRoleIcon, roleIconStyles } from "./roleIcons";
+import { buildTimelineNodes, type TimelineNode, type TimelineNodeStatus } from "./timelineAdapter";
 import "./ConversationMeter";
 import "./FormattedText";
-import "./ToolExecutionView";
+import "./ToolCallCard";
+import "./ToolCallGroup";
+import "./TaskTimeline";
+import "./ExecutionLog";
+import "./DiffViewer";
+import "./CollapsibleSection";
+import "./ErrorPanel";
+import "./MessageBubble";
+import "./TimelineLayout";
+import "./TimelineNodeWrapper";
+import "./ToolCallNode";
 
 const shortTimestampFormatter = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 const fullTimestampFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
+const ASSISTANT_FOOTER_REVEAL_DELAY_MS = 500;
 
 const partialStreamNoticeBodies = [
   "You opened this chat while the assistant was already replying. The complete answer will appear shortly.",
@@ -58,6 +70,7 @@ export class ChatView extends LitElement {
   @state() private pinnedToBottom = true;
   @state() private expandedMetaKey: string | undefined;
   @state() private copiedMessageKey: string | undefined;
+  @state() private visibleAssistantFooterKey: string | undefined;
   @state() private currentConversationIndex: number | undefined;
   private readonly disclosures = new ChatDisclosureController();
   private readonly scrollController = new ChatScrollController();
@@ -66,6 +79,7 @@ export class ChatView extends LitElement {
   private loadMoreCheckFrame: number | undefined;
   private scrollToBottomFrame: number | undefined;
   private conversationRailFrame: number | undefined;
+  private assistantFooterRevealTimer: number | undefined;
   private groupedMessagesInput?: ChatLine[];
   private groupedMessagesStart = 0;
   private groupedMessagesCache: ChatGroup[] = [];
@@ -107,6 +121,7 @@ export class ChatView extends LitElement {
     if (this.loadMoreCheckFrame !== undefined) cancelAnimationFrame(this.loadMoreCheckFrame);
     if (this.scrollToBottomFrame !== undefined) cancelAnimationFrame(this.scrollToBottomFrame);
     if (this.conversationRailFrame !== undefined) cancelAnimationFrame(this.conversationRailFrame);
+    this.clearAssistantFooterRevealTimer();
     window.removeEventListener("resize", this.onViewportResize);
     window.removeEventListener("pagehide", this.onPageHide);
     window.visualViewport?.removeEventListener("resize", this.onViewportResize);
@@ -138,6 +153,7 @@ export class ChatView extends LitElement {
       this.prepareSessionUiState();
     }
     if (changed.has("isReceivingPartialStream") || (changed.has("sessionId") && this.isReceivingPartialStream)) this.syncPartialStreamNoticeBody();
+    if (this.assistantFooterRevealInputsChanged(changed)) this.prepareAssistantFooterReveal(changed);
     if (changed.has("messages")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
   }
 
@@ -155,28 +171,290 @@ export class ChatView extends LitElement {
     if (changed.has("messages") || changed.has("messageStart") || changed.has("messageTotal") || changed.has("hasMore") || changed.has("loadingMore")) this.scheduleConversationRailUpdate();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestLoadMoreIfNeeded();
+    if (this.assistantFooterRevealInputsChanged(changed)) this.scheduleAssistantFooterReveal();
   }
 
   override render() {
-    const groups = this.groupedMessages();
+    const nodes = this.computedTimelineNodes();
+    const assistantFooterKey = this.revealedAssistantFooterKey(nodes);
     return html`
       <div class="chat-wrap">
         ${this.renderConversationRail()}
         <div class="chat" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
           ${this.renderHistoryBoundary()}
-          ${repeat(
-            groups,
-            (group) => group.kind === "message" ? this.messageAnchorKey(group.index) : this.groupRenderKey(group.startIndex),
-            (group, index) => group.kind === "message"
-              ? this.renderMessage(group.message, group.index)
-              : this.renderMessageGroup(group.messages, group.startIndex, group.endIndex, this.isLiveTailGroup(groups, index)),
-          )}
+          <timeline-layout>
+            ${nodes.map((node, index) => this.renderTimelineNode(node, index, node.key === assistantFooterKey))}
+          </timeline-layout>
           ${this.renderQueuedMessages()}
           ${this.renderSessionActivity()}
+          ${this.renderActivityDock()}
         </div>
-        ${this.renderActivityDock()}
       </div>
     `;
+  }
+
+  private timelineNodesInput?: ChatLine[];
+  private timelineNodesStart = 0;
+  private timelineNodesCache: TimelineNode[] = [];
+
+  private computedTimelineNodes(): TimelineNode[] {
+    if (this.timelineNodesInput === this.messages && this.timelineNodesStart === this.messageStart) return this.timelineNodesCache;
+    this.timelineNodesInput = this.messages;
+    this.timelineNodesStart = this.messageStart;
+    this.timelineNodesCache = buildTimelineNodes(this.messages, this.messageStart);
+    return this.timelineNodesCache;
+  }
+
+  private lastAssistantNodeKey(nodes: readonly TimelineNode[]): string | undefined {
+    for (let index = nodes.length - 1; index >= 0; index--) {
+      const node = nodes[index];
+      if (node?.type === "assistant") return node.key;
+    }
+    return undefined;
+  }
+
+  private revealedAssistantFooterKey(nodes: readonly TimelineNode[]): string | undefined {
+    if (this.isAssistantFooterRevealBlocked()) return undefined;
+    const lastAssistantNodeKey = this.lastAssistantNodeKey(nodes);
+    return this.visibleAssistantFooterKey === lastAssistantNodeKey ? lastAssistantNodeKey : undefined;
+  }
+
+  private assistantFooterRevealInputsChanged(changed: Map<string, unknown>): boolean {
+    return changed.has("messages")
+      || changed.has("messageStart")
+      || changed.has("sessionId")
+      || changed.has("status")
+      || changed.has("activity")
+      || changed.has("isSendingPrompt")
+      || changed.has("isCompacting")
+      || changed.has("isReceivingPartialStream");
+  }
+
+  private prepareAssistantFooterReveal(changed: Map<string, unknown>): void {
+    const lastAssistantNodeKey = this.lastAssistantNodeKey(this.computedTimelineNodes());
+    const contentChanged = changed.has("messages") || changed.has("messageStart") || changed.has("sessionId");
+    const shouldHideFooter = contentChanged
+      || this.isAssistantFooterRevealBlocked()
+      || lastAssistantNodeKey === undefined
+      || (this.visibleAssistantFooterKey !== undefined && this.visibleAssistantFooterKey !== lastAssistantNodeKey);
+    if (!shouldHideFooter) return;
+    this.clearAssistantFooterRevealTimer();
+    this.visibleAssistantFooterKey = undefined;
+  }
+
+  private scheduleAssistantFooterReveal(): void {
+    const lastAssistantNodeKey = this.lastAssistantNodeKey(this.computedTimelineNodes());
+    if (this.assistantFooterRevealTimer !== undefined || lastAssistantNodeKey === undefined || this.visibleAssistantFooterKey === lastAssistantNodeKey || this.isAssistantFooterRevealBlocked()) return;
+    this.assistantFooterRevealTimer = window.setTimeout(() => {
+      this.assistantFooterRevealTimer = undefined;
+      const currentAssistantNodeKey = this.lastAssistantNodeKey(this.computedTimelineNodes());
+      if (currentAssistantNodeKey === lastAssistantNodeKey && !this.isAssistantFooterRevealBlocked()) this.visibleAssistantFooterKey = lastAssistantNodeKey;
+    }, ASSISTANT_FOOTER_REVEAL_DELAY_MS);
+  }
+
+  private clearAssistantFooterRevealTimer(): void {
+    if (this.assistantFooterRevealTimer === undefined) return;
+    window.clearTimeout(this.assistantFooterRevealTimer);
+    this.assistantFooterRevealTimer = undefined;
+  }
+
+  private isAssistantFooterRevealBlocked(): boolean {
+    return this.isReceivingPartialStream || this.isCompacting || this.isSessionLive();
+  }
+
+  private renderTimelineNode(node: TimelineNode, displayIndex: number, showAssistantFooter: boolean) {
+    const isLive = this.isSessionLive();
+    const nodeStatus: TimelineNodeStatus = node.status;
+    return html`
+      ${this.renderScrollMarker(node.key)}
+      <timeline-node-wrapper
+        class="tl-node-instance"
+        .status=${nodeStatus}
+        .isLive=${isLive && node.type !== "user" && node.type !== "meta"}
+        data-index=${String(displayIndex)}
+        data-scroll-anchor-id=${node.key}
+      >
+        ${this.renderTimelineNodeContent(node, showAssistantFooter)}
+      </timeline-node-wrapper>
+    `;
+  }
+
+  private renderTimelineNodeContent(node: TimelineNode, showAssistantFooter: boolean) {
+    switch (node.type) {
+      case "user":
+        return this.renderUserNode(node);
+      case "assistant":
+        return this.renderAssistantNode(node, showAssistantFooter);
+      case "tool":
+        return this.renderToolNode(node);
+      case "error":
+        return this.renderErrorNode(node);
+      case "bash":
+        return this.renderBashNode(node);
+      case "thinking":
+        return this.renderThinkingNode(node);
+      case "skill":
+        return this.renderSkillNode(node);
+      case "meta":
+        return this.renderMetaNode(node);
+      default:
+        return null;
+    }
+  }
+
+  private renderUserNode(node: TimelineNode) {
+    const textPart = node.parts.find((p): p is Extract<ChatPart, { type: "text" }> => p.type === "text");
+    const meta = this.nodeMetaLabel(node);
+    const key = node.key;
+    return html`
+      <div class="tl-user">
+        ${textPart ? html`<formatted-text .text=${textPart.text}></formatted-text>` : null}
+        ${this.renderNodeImages(node)}
+        <div class="tl-user-footer">
+          <div class="tl-header-trailing">
+            ${this.renderCopyAction(node, key)}
+            ${meta !== undefined ? html`<span class="tl-meta">${meta}</span>` : null}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderAssistantNode(node: TimelineNode, showFooter: boolean) {
+    const textPart = node.parts.find((p): p is Extract<ChatPart, { type: "text" }> => p.type === "text");
+    const meta = this.nodeMetaLabel(node);
+    const key = node.key;
+    return html`
+      <div class="tl-assistant">
+        ${textPart ? html`<formatted-text .text=${textPart.text}></formatted-text>` : null}
+        ${this.renderNodeImages(node)}
+        ${showFooter ? html`
+          <div class="tl-assistant-footer">
+            <div class="tl-header-trailing">
+              ${this.renderCopyAction(node, key)}
+              ${meta !== undefined ? html`<span class="tl-meta">${meta}</span>` : null}
+            </div>
+          </div>
+        ` : null}
+      </div>
+    `;
+  }
+
+  private renderCopyAction(node: TimelineNode, key: string) {
+    const text = node.parts
+      .filter((p): p is Extract<ChatPart, { type: "text" }> => p.type === "text")
+      .map((p) => p.text.trim())
+      .filter((t) => t !== "")
+      .join("\n\n");
+    if (text === "") return null;
+    const copied = this.copiedMessageKey === key;
+    return html`
+      <div class="tl-copy-action" aria-label="Copy message">
+        <button type="button" class="tl-copy-btn" title=${copied ? "Copied" : "Copy message"} @click=${(event: MouseEvent) => { void this.copyNodeText(text, key, event); }}>
+          <span aria-hidden="true">${copied ? "✓" : "⧉"}</span>
+        </button>
+      </div>
+    `;
+  }
+
+  private async copyNodeText(text: string, key: string, event: MouseEvent): Promise<void> {
+    event.stopPropagation();
+    const ok = await this.writeClipboard(text);
+    if (!ok) return;
+    this.copiedMessageKey = key;
+    window.setTimeout(() => {
+      if (this.copiedMessageKey === key) this.copiedMessageKey = undefined;
+    }, 1200);
+  }
+
+  private renderToolNode(node: TimelineNode) {
+    const agg = node.tool;
+    if (agg) {
+      return html`<tool-call-node .aggregation=${agg}></tool-call-node>`;
+    }
+    return null;
+  }
+
+  private renderErrorNode(node: TimelineNode) {
+    const textPart = node.parts.find((p): p is Extract<ChatPart, { type: "text" }> => p.type === "text");
+    return html`
+      <error-panel .message=${textPart?.text ?? ""}></error-panel>
+    `;
+  }
+
+  private renderBashNode(node: TimelineNode) {
+    const textPart = node.parts.find((p): p is Extract<ChatPart, { type: "text" }> => p.type === "text");
+    if (!textPart) return null;
+    return html`<execution-log .stdout=${textPart.text}></execution-log>`;
+  }
+
+  private renderThinkingNode(node: TimelineNode) {
+    const part = node.parts.find((p): p is Extract<ChatPart, { type: "thinking" }> => p.type === "thinking");
+    if (!part) return null;
+    return html`
+      <collapsible-section summary="Thinking" .borderless=${true}>
+        <formatted-text .text=${part.text}></formatted-text>
+      </collapsible-section>
+    `;
+  }
+
+  private renderSkillNode(node: TimelineNode) {
+    const part = node.parts[0];
+    if (!part) return null;
+    if (part.type === "skillInvocation") {
+      return html`
+        <collapsible-section summary=${`[skill] ${part.name}`}>
+          <small>${part.location}</small>
+          <formatted-text .text=${part.content}></formatted-text>
+        </collapsible-section>
+      `;
+    }
+    if (part.type === "skillRead") {
+      return html`
+        <div class="part skill-read">
+          <strong>Loaded ${part.name}</strong>
+          <small>read ${part.path}</small>
+        </div>
+      `;
+    }
+    return null;
+  }
+
+  private renderMetaNode(node: TimelineNode) {
+    const source = node.source;
+    const label = source === "compaction"
+      ? "History compaction"
+      : source === "branch_summary"
+        ? "Branch summary"
+        : "Events";
+    return html`
+      <div class="tl-meta-line">${label}</div>
+    `;
+  }
+
+  private renderNodeImages(node: TimelineNode) {
+    const images = node.parts.filter((p): p is Extract<ChatPart, { type: "image" }> => p.type === "image");
+    if (images.length === 0) return null;
+    return images.map((part) => html`<img class="chat-image" src=${`data:${part.mimeType};base64,${part.data}`} alt="attached image" loading="lazy" />`);
+  }
+
+  private nodeMetaLabel(node: TimelineNode): string | undefined {
+    const meta = node.meta;
+    if (meta === undefined) return undefined;
+    const parts: string[] = [];
+    if (meta.timestamp !== undefined && meta.timestamp !== "") {
+      const date = new Date(meta.timestamp);
+      if (Number.isFinite(date.getTime())) parts.push(shortTimestampFormatter.format(date));
+    }
+    if (meta.model !== undefined) {
+      const id = meta.model.responseId ?? meta.model.id;
+      if (id !== undefined && id !== "") {
+        parts.push(meta.model.provider !== undefined && meta.model.provider !== "" ? `${meta.model.provider}/${id}` : id);
+      } else if (meta.model.provider !== undefined && meta.model.provider !== "") {
+        parts.push(meta.model.provider);
+      }
+    }
+    return parts.length > 0 ? parts.join(" · ") : undefined;
   }
 
   private groupedMessages(): ChatGroup[] {
@@ -345,6 +623,12 @@ export class ChatView extends LitElement {
   private renderMessageGroup(messages: ChatLine[], startIndex: number, endIndex: number, defaultOpen: boolean) {
     const disclosureKey = this.groupDisclosureKey(startIndex, endIndex, defaultOpen);
     const open = this.disclosures.isOpen(disclosureKey, defaultOpen);
+    
+    // Collect all tool parts for the timeline
+    const allParts = messages.flatMap(m => m.parts);
+    const toolParts = allParts.filter(p => p.type === "toolExecution" || p.type === "toolCall" || p.type === "toolResult");
+    const hasTimeline = toolParts.length >= 3 && defaultOpen;
+    
     return html`
       ${this.renderScrollMarker(this.groupScrollMarkerId(endIndex))}
       <details class=${defaultOpen ? "msg event-group live" : "msg event-group"} data-index=${startIndex} data-scroll-anchor-id=${this.groupAnchorKey(startIndex)} ?open=${open} @toggle=${(event: Event) => { this.onGroupToggle(disclosureKey, event, defaultOpen); }}>
@@ -353,6 +637,7 @@ export class ChatView extends LitElement {
           <span>${summarizeChatGroup(messages)}</span>
         </summary>
         <div class="group-body">
+          ${hasTimeline ? html`<task-timeline class="group-timeline" .parts=${toolParts}></task-timeline>` : null}
           ${messages.map((message, offset) => {
             const toolOnly = this.isToolExecutionOnlyMessage(message);
             return html`
@@ -374,9 +659,14 @@ export class ChatView extends LitElement {
   private renderMessageHeader(message: ChatLine, key: string) {
     const meta = this.messageMetaLabel(message);
     const expanded = this.expandedMetaKey === key;
+    const role = message.role;
+    const showIcon = role !== "user" && role !== "assistant";
     return html`
       <div class="msg-header">
-        <b class="label">${message.role}</b>
+        <div class="msg-role">
+          ${showIcon ? html`<span class="role-icon" aria-hidden="true">${renderRoleIcon(role)}</span>` : null}
+          <span class="sr-only">${role}</span>
+        </div>
         <div class="msg-header-trailing">
           ${this.renderMessageActions(message, key)}
           <span class=${expanded ? "msg-meta expanded" : "msg-meta"} role="button" tabindex="0" title=${meta.full} aria-label=${meta.full} aria-expanded=${String(expanded)} @click=${() => { this.expandedMetaKey = expanded ? undefined : key; }} @keydown=${(event: KeyboardEvent) => { this.onMetaKeydown(event, key, expanded); }}>${meta.short}</span>
@@ -402,6 +692,7 @@ export class ChatView extends LitElement {
     event.preventDefault();
     this.expandedMetaKey = expanded ? undefined : key;
   }
+
 
   private isCopyableMessage(message: ChatLine): boolean {
     return (message.role === "user" || message.role === "assistant") && this.messageCopyText(message) !== "";
@@ -471,15 +762,14 @@ export class ChatView extends LitElement {
   }
 
   private renderPart(part: ChatPart, message?: ChatLine) {
-    if (part.type === "text" && message?.role === "bash") return html`<pre class="part shell-output">${part.text}</pre>`;
+    if (part.type === "text" && message?.role === "bash") return html`<execution-log class="part" .stdout=${part.text}></execution-log>`;
     if (part.type === "text") return html`<formatted-text class="part" .text=${part.text}></formatted-text>`;
-    if (part.type === "thinking") return html`<details class="part"><summary>thinking</summary><formatted-text .text=${part.text}></formatted-text></details>`;
+    if (part.type === "thinking") return html`<collapsible-section class="part" summary="Thinking" .borderless=${true}><formatted-text .text=${part.text}></formatted-text></collapsible-section>`;
     if (part.type === "skillInvocation") return html`
-      <details class="part skill-invocation">
-        <summary><b>[skill]</b> ${part.name}</summary>
+      <collapsible-section class="part" summary=${`[skill] ${part.name}`}>
         <small>${part.location}</small>
         <formatted-text .text=${part.content}></formatted-text>
-      </details>
+      </collapsible-section>
     `;
     if (part.type === "skillRead") return html`
       <div class="part skill-read">
@@ -488,13 +778,12 @@ export class ChatView extends LitElement {
       </div>
     `;
     if (part.type === "image") return html`<img class="part chat-image" src=${`data:${part.mimeType};base64,${part.data}`} alt="attached image" loading="lazy" />`;
-    if (part.type === "toolCall") return html`<div class="part tool-line">▶ ${part.toolName}<span class="summary">${part.summary}</span></div>`;
-    if (part.type === "toolExecution") return html`<tool-execution-view class="part" .execution=${part}></tool-execution-view>`;
+    if (part.type === "toolCall") return html`<div class="part tool-line"><span class="tool-arrow">▶</span> <span class="tool-call-name">${part.toolName}</span><span class="summary">${part.summary}</span></div>`;
+    if (part.type === "toolExecution") return html`<tool-call-card class="part" .execution=${part}></tool-call-card>`;
     if (part.type === "toolResult") return html`
-      <details class="part" ?open=${part.isError}>
-        <summary>${part.isError ? "✖" : "✓"} ${part.toolName} result</summary>
+      <collapsible-section class="part" summary=${`${part.isError ? "✖" : "✓"} ${part.toolName} result`} .open=${part.isError}>
         <formatted-text .text=${part.text}></formatted-text>
-      </details>
+      </collapsible-section>
     `;
     return null;
   }
@@ -761,12 +1050,12 @@ export class ChatView extends LitElement {
   private firstVisibleArticle(): HTMLElement | undefined {
     const chat = this.chat;
     if (chat === undefined) return undefined;
-    const primaryArticles = Array.from(this.renderRoot.querySelectorAll<HTMLElement>("article.msg"));
+    const primaryArticles = Array.from(this.renderRoot.querySelectorAll<HTMLElement>("article.msg, timeline-node-wrapper"));
     return findFirstVisibleArticle(chat, primaryArticles) ?? findFirstVisibleArticle(chat, this.articles());
   }
 
   private articles(): HTMLElement[] {
-    return Array.from(this.renderRoot.querySelectorAll<HTMLElement>("article.msg, details.msg"));
+    return Array.from(this.renderRoot.querySelectorAll<HTMLElement>("article.msg, details.msg, timeline-node-wrapper"));
   }
 
   private scrollAnchorElements(): HTMLElement[] {
@@ -811,5 +1100,5 @@ export class ChatView extends LitElement {
     return `g:${String(endIndex)}`;
   }
 
-  static override styles = chatStyles;
+  static override styles = [roleIconStyles, chatStyles];
 }

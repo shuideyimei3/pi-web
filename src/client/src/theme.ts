@@ -61,6 +61,17 @@ export const THEME_TOKENS: ThemeToken[] = [
   "--pi-bg-overlay",
   "--pi-success-bg-overlay",
   "--pi-terminal-selection",
+  "--pi-accent-ref",
+  "--pi-accent-ref-bg",
+  "--pi-running",
+  "--pi-running-bg",
+  "--pi-glass-bg",
+  "--pi-glass-border",
+  "--pi-glass-highlight",
+  "--pi-glass-blur",
+  "--pi-solid-bg",
+  "--pi-solid-bg-strong",
+  "--pi-danger-bg",
 ];
 
 const qualifiedContributionIdPattern = /^[a-z][a-z0-9.-]*:[a-z][a-z0-9.-]*$/u;

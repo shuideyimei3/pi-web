@@ -38,6 +38,17 @@ const tokens = {
   "--pi-bg-overlay": "#000000",
   "--pi-success-bg-overlay": "#000000",
   "--pi-terminal-selection": "#000000",
+  "--pi-accent-ref": "#000000",
+  "--pi-accent-ref-bg": "#000000",
+  "--pi-running": "#000000",
+  "--pi-running-bg": "#000000",
+  "--pi-glass-bg": "#000000",
+  "--pi-glass-border": "#000000",
+  "--pi-glass-highlight": "#000000",
+  "--pi-glass-blur": "blur(20px)",
+  "--pi-solid-bg": "#000000",
+  "--pi-solid-bg-strong": "#000000",
+  "--pi-danger-bg": "#000000",
 } satisfies ThemeTokens;
 
 const themes = [

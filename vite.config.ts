@@ -111,12 +111,14 @@ export default defineConfig({
     },
   },
   server: {
-    port: 8505,
+    port: 8006,
     strictPort: true,
+    host: "0.0.0.0",
     ...(config.allowedHosts === undefined ? {} : { allowedHosts: config.allowedHosts }),
     proxy: {
       "/api": { target: `http://localhost:${String(apiPort)}`, ws: true },
       "/pi-web-plugins": { target: `http://localhost:${String(apiPort)}` },
+      "/sessiond": { target: `http://localhost:${String(apiPort)}`, ws: true },
     },
   },
 });

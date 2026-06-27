@@ -279,10 +279,43 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-status.online { color: var(--pi-success); }
     .machine-status.offline, .machine-status.error { color: var(--pi-danger); }
     .machine-chevron { flex: 0 0 auto; color: var(--pi-muted); font-size: 11px; }
-    .activity-indicator { flex: 0 0 auto; display: inline-block; width: 7px; height: 7px; background: var(--pi-success); animation: pulse 1s ease-in-out infinite; }
-    .activity-indicator.session { border-radius: 50%; background: var(--pi-success); }
-    .activity-indicator.terminal { border-radius: 2px; background: var(--pi-accent); }
-    .activity-indicator.sending { border-radius: 50%; background: var(--pi-warning); }
+    .activity-indicator { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 8px; height: 8px; border-radius: 50%; background: transparent; position: relative; }
+    .activity-indicator::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--pi-success); animation: activity-breathe 2s ease-in-out infinite; }
+    .activity-indicator::after { content: ''; position: absolute; inset: -3px; border-radius: inherit; background: var(--pi-success); opacity: 0; animation: activity-glow 2s ease-in-out infinite; filter: blur(3px); }
+    .activity-indicator.session::before { background: var(--pi-success); }
+    .activity-indicator.session::after { background: var(--pi-success); }
+    .activity-indicator.terminal {
+      border-radius: 2px;
+      width: 10px;
+      height: 10px;
+      border: 1px solid rgba(139, 178, 255, 0.3);
+      background: rgba(139, 178, 255, 0.05);
+      overflow: hidden;
+    }
+    .activity-indicator.terminal::before {
+      content: '';
+      position: absolute;
+      inset: 2px;
+      border-radius: 1px;
+      background: var(--pi-accent);
+      animation: terminal-cursor-blink 1.2s steps(1, end) infinite;
+    }
+    .activity-indicator.terminal::after {
+      content: '';
+      position: absolute;
+      left: 2px;
+      right: 2px;
+      top: 0;
+      height: 1px;
+      background: rgba(139, 178, 255, 0.6);
+      animation: terminal-scan-line 1.5s ease-in-out infinite;
+      filter: none;
+      opacity: 1;
+      border-radius: 0;
+      inset: auto;
+    }
+    .activity-indicator.sending::before { background: var(--pi-warning); animation: activity-sending-spin 1.5s linear infinite; }
+    .activity-indicator.sending::after { background: var(--pi-warning); animation: activity-sending-glow 1.5s linear infinite; }
     .machine-switcher-menu { position: fixed; z-index: 10000; box-sizing: border-box; min-width: min(280px, calc(100vw - 16px)); overflow: auto; padding: 4px; border: 1px solid var(--pi-border); border-radius: 10px; background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); }
     .machine-option { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px; align-items: stretch; margin: 2px 0; }
     .machine-option.no-actions { grid-template-columns: minmax(0, 1fr); }
@@ -299,6 +332,12 @@ export class MachineSwitcher extends LitElement implements KeyboardNavigableSect
     .machine-option-main:hover, .machine-option-main:focus-visible, .machine-option-actions-toggle:hover, .machine-option-actions-toggle:focus-visible, .machine-option.selected .machine-option-main { background: var(--pi-selection-bg); }
     .machine-option-actions-panel button:hover, .machine-option-actions-panel button:focus-visible { background: var(--pi-selection-bg); }
     .machine-option-actions-panel button.danger:hover, .machine-option-actions-panel button.danger:focus-visible { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }
+    @keyframes activity-breathe { 0%, 100% { transform: scale(.7); opacity: .4; } 50% { transform: scale(1); opacity: 1; } }
+    @keyframes activity-glow { 0%, 100% { transform: scale(.8); opacity: 0; } 50% { transform: scale(1.6); opacity: .35; } }
+    @keyframes terminal-cursor-blink { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
+    @keyframes terminal-scan-line { 0%, 100% { transform: translateY(2px); opacity: 0; } 20% { opacity: .8; } 50% { transform: translateY(8px); opacity: .8; } 80% { opacity: 0; } }
+    @keyframes activity-sending-spin { 0% { transform: scale(.8); opacity: .6; clip-path: polygon(50% 0%, 100% 0%, 100% 100%, 50% 100%); } 50% { transform: scale(1); opacity: 1; clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%); } 100% { transform: scale(.8); opacity: .6; clip-path: polygon(50% 0%, 100% 0%, 100% 100%, 50% 100%); } }
+    @keyframes activity-sending-glow { 0% { transform: scale(.8); opacity: 0; } 50% { transform: scale(1.8); opacity: .3; } 100% { transform: scale(.8); opacity: 0; } }
     @keyframes pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
   `;
 }
