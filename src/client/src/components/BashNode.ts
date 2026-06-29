@@ -203,7 +203,7 @@ export class BashNode extends LitElement {
       justify-self: start;
       border: 1px solid var(--pi-border-muted);
       border-radius: 6px;
-      background: var(--pi-glass-bg);
+      background: var(--pi-surface);
       color: var(--pi-text);
       padding: 3px 7px;
       font: 12px system-ui, sans-serif;

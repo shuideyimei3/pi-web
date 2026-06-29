@@ -151,7 +151,7 @@ export class SubagentToolDetails extends LitElement {
     .activity span { color: var(--pi-muted); text-transform: uppercase; letter-spacing: .04em; }
     .output { display: grid; gap: 6px; min-width: 0; border-top: 1px solid var(--pi-border-muted); padding-top: 6px; }
     .output formatted-text { font-size: 13px; }
-    button { justify-self: start; border: 1px solid var(--pi-border-muted); border-radius: 6px; background: var(--pi-glass-bg); color: var(--pi-text); padding: 3px 7px; font: 12px system-ui, sans-serif; cursor: pointer; }
+    button { justify-self: start; border: 1px solid var(--pi-border-muted); border-radius: 6px; background: var(--pi-surface); color: var(--pi-text); padding: 3px 7px; font: 12px system-ui, sans-serif; cursor: pointer; }
     button:hover, button:focus { background: var(--pi-surface-hover); border-color: var(--pi-border); }
     .paths { display: grid; gap: 3px; }
     .path-row { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; align-items: baseline; min-width: 0; color: var(--pi-muted); font-size: 12px; }

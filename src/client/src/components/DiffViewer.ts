@@ -66,11 +66,9 @@ export class DiffViewer extends LitElement {
   static override styles = css`
     :host { display: block; width: 100%; max-width: 100%; min-width: 0; }
     .diff-viewer {
-      border: 1px solid var(--pi-glass-border);
+      border: 1px solid var(--pi-border-muted);
       border-radius: 12px;
-      background: transparent;
-      backdrop-filter: var(--pi-glass-blur); -webkit-backdrop-filter: var(--pi-glass-blur);
-      box-shadow: inset 0 1px 0 0 var(--pi-glass-highlight);
+      background: var(--pi-surface);
       overflow: hidden;
     }
     .diff-header {
@@ -113,8 +111,8 @@ export class DiffViewer extends LitElement {
       padding: 4px 10px; color: var(--pi-muted); font-size: 12px;
     }
     button {
-      border: 1px solid var(--pi-glass-border); border-radius: 6px;
-      background: transparent; color: var(--pi-text);
+      border: 1px solid var(--pi-border-muted); border-radius: 6px;
+      background: var(--pi-surface); color: var(--pi-text);
       padding: 3px 7px; font: 12px system-ui, sans-serif; cursor: pointer;
       transition: all .2s cubic-bezier(.4,0,.2,1);
     }

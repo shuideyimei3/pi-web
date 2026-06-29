@@ -539,8 +539,8 @@ export class TerminalPanel extends LitElement {
 
   static override styles = css`
     :host { flex: 1 1 auto; min-height: 0; display: flex; }
-    .terminal-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--pi-glass-highlight) 60%, transparent), transparent 160px), var(--pi-terminal-bg); backdrop-filter: var(--pi-glass-blur); -webkit-backdrop-filter: var(--pi-glass-blur); }
-    .terminal-tabs { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: color-mix(in srgb, var(--pi-bg) 72%, transparent); overflow: auto; backdrop-filter: var(--pi-glass-blur); -webkit-backdrop-filter: var(--pi-glass-blur); }
+    .terminal-shell { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--pi-glass-highlight) 60%, transparent), transparent 160px), var(--pi-terminal-bg); }
+    .terminal-tabs { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; padding: 6px; border-bottom: 1px solid var(--pi-border-muted); background: color-mix(in srgb, var(--pi-bg) 72%, transparent); overflow: auto; }
     button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 180px; border: 1px solid var(--pi-border); border-radius: 7px; background: var(--pi-surface); color: var(--pi-text); padding: 5px 7px; cursor: pointer; }
     button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     button.new { flex: 0 0 auto; color: var(--pi-muted); }
@@ -559,7 +559,7 @@ export class TerminalPanel extends LitElement {
     .command-run-notice code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-text-secondary); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .command-run-notice kbd { border: 1px solid var(--pi-border); border-radius: 4px; background: var(--pi-bg); padding: 0 4px; font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .command-run-notice button { justify-self: end; max-width: none; }
-    .terminal-host { flex: 1 1 auto; min-height: 0; padding: 6px; box-sizing: border-box; overflow: hidden; background: radial-gradient(80% 55% at 16% 0%, color-mix(in srgb, var(--pi-glass-highlight) 34%, transparent), transparent 62%), var(--pi-terminal-bg); backdrop-filter: var(--pi-glass-blur); -webkit-backdrop-filter: var(--pi-glass-blur); }
+    .terminal-host { flex: 1 1 auto; min-height: 0; padding: 6px; box-sizing: border-box; overflow: hidden; background: radial-gradient(80% 55% at 16% 0%, color-mix(in srgb, var(--pi-glass-highlight) 34%, transparent), transparent 62%), var(--pi-terminal-bg); }
     .terminal-host .xterm { height: 100%; cursor: text; position: relative; user-select: none; }
     .terminal-host .xterm.focus, .terminal-host .xterm:focus { outline: none; }
     .terminal-host .xterm-helpers { position: absolute; top: 0; z-index: 5; }

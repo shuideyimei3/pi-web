@@ -179,13 +179,11 @@ export class ToolCallCard extends LitElement {
     .tool-card {
       display: grid; gap: 0; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;
       overflow: hidden;
-      border: 1px solid var(--pi-glass-border);
+      border: 1px solid var(--pi-border-muted);
       border-radius: 12px;
-      background: transparent;
+      background: var(--pi-surface);
       color: var(--pi-text);
       transition: border-color .2s cubic-bezier(.4,0,.2,1), box-shadow .2s cubic-bezier(.4,0,.2,1);
-      backdrop-filter: var(--pi-glass-blur); -webkit-backdrop-filter: var(--pi-glass-blur);
-      box-shadow: inset 0 1px 0 0 var(--pi-glass-highlight);
     }
     .tool-card.running, .tool-card.pending {
       border-color: rgba(139, 178, 255, .25);
@@ -264,7 +262,7 @@ export class ToolCallCard extends LitElement {
     .diff-details > summary small { flex: 0 0 auto; color: var(--pi-dim); }
     .diff-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; margin-top: 6px; color: var(--pi-muted); font-size: 12px; }
     .diff-toolbar span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    button { border: 1px solid var(--pi-glass-border); border-radius: 6px; background: var(--pi-glass-bg); color: var(--pi-text); padding: 3px 7px; font: 12px system-ui, sans-serif; cursor: pointer; transition: all .2s cubic-bezier(.4,0,.2,1); }
+    button { border: 1px solid var(--pi-border-muted); border-radius: 6px; background: var(--pi-surface-hover); color: var(--pi-text); padding: 3px 7px; font: 12px system-ui, sans-serif; cursor: pointer; transition: all .2s cubic-bezier(.4,0,.2,1); }
     button:hover, button:focus { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.15); }
 
     /* ── Diff block (solid core, no backdrop-filter) ── */

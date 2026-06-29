@@ -61,7 +61,7 @@ export class ToolCallGroup extends LitElement {
   static override styles = [quantumBeaconStyles, css`
     :host { display: block; width: 100%; max-width: 100%; min-width: 0; }
     .tool-group { display: grid; gap: 4px; width: 100%; max-width: 100%; min-width: 0; }
-    .group-header { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 6px 8px; border: 1px solid var(--pi-glass-border); border-radius: 12px; background: transparent; backdrop-filter: var(--pi-glass-blur); -webkit-backdrop-filter: var(--pi-glass-blur); box-shadow: inset 0 1px 0 0 var(--pi-glass-highlight); cursor: pointer; user-select: none; font-size: 13px; }
+    .group-header { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 6px 8px; border: 1px solid var(--pi-border-muted); border-radius: 12px; background: var(--pi-surface); cursor: pointer; user-select: none; font-size: 13px; }
     .group-header:hover { background: rgba(255,255,255,0.07); }
     .group-header:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: -2px; border-radius: 8px; }
     .chevron { font-size: 11px; color: var(--pi-muted); }

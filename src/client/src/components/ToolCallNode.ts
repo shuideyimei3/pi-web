@@ -460,7 +460,7 @@ export class ToolCallNode extends LitElement {
 
     .tcn-btn {
       border: 1px solid var(--pi-border-muted); border-radius: 6px;
-      background: var(--pi-glass-bg); color: var(--pi-text); padding: 3px 7px;
+      background: var(--pi-surface); color: var(--pi-text); padding: 3px 7px;
       font: 12px system-ui, sans-serif; cursor: pointer;
       transition: all .2s cubic-bezier(.4,0,.2,1);
     }
