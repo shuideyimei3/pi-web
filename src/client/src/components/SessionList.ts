@@ -266,6 +266,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
 
   private renderSessionMenuItems(session: SessionInfo, descendantCount: number) {
     if (isCachedNewSessionInfo(session)) return html`
+      <button title="Send a message before archiving this session" disabled>Archive session</button>
       <button title="Delete browser-cached new session" @click=${() => { this.openMenuSessionId = undefined; this.onDelete?.(session); }}>Delete</button>
     `;
     if (session.archived === true) return html`
@@ -273,7 +274,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
       <button class="danger" title=${this.canDeleteArchived ? "Permanently delete archived session" : this.archivedDeleteUnavailableMessage} ?disabled=${!this.canDeleteArchived} @click=${() => { this.openMenuSessionId = undefined; this.confirmDeleteArchived(session); }}>Delete archived session</button>
     `;
     return html`
-      <button title="Archive session" @click=${() => { this.openMenuSessionId = undefined; this.onArchive?.(session); }}>Archive</button>
+      <button title="Archive session" @click=${() => { this.openMenuSessionId = undefined; this.onArchive?.(session); }}>Archive session</button>
       <button class="danger" title=${this.canDeleteArchived ? "Permanently delete session" : this.archivedDeleteUnavailableMessage} ?disabled=${!this.canDeleteArchived} @click=${() => { this.openMenuSessionId = undefined; this.confirmDeleteSession(session); }}>Delete session</button>
       ${descendantCount > 0 ? html`<button title="Archive this session and its descendants" @click=${() => { this.openMenuSessionId = undefined; this.confirmArchiveWithDescendants(session, descendantCount); }}>Archive with descendants (${descendantCount})</button>` : null}
       ${session.parentSessionPath !== undefined ? html`<button title="Detach from parent" @click=${() => { this.openMenuSessionId = undefined; this.onDetachParent?.(session); }}>Detach from parent</button>` : null}
