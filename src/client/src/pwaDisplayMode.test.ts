@@ -16,6 +16,7 @@ describe("detectPwaDisplayMode", () => {
 
   it("checks the installed app display modes supported by the manifest", () => {
     expect(PWA_DISPLAY_MODE_QUERIES).toEqual([
+      "(display-mode: window-controls-overlay)",
       "(display-mode: standalone)",
       "(display-mode: fullscreen)",
       "(display-mode: minimal-ui)",

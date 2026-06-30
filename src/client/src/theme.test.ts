@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, findThemePairForTheme, resolveThemePreference } from "./theme";
+import { CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, appThemeColorForScheme, findThemePairForTheme, resolveThemePreference } from "./theme";
 import type { QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, ThemeColorScheme, ThemeTokens } from "./plugins/types";
 
 const tokens = {
@@ -124,6 +124,16 @@ describe("resolveThemePreference", () => {
   it("can look up a pair from either member theme", () => {
     expect(findThemePairForTheme(themePairs, "themes:pi-web-light")?.id).toBe("themes:pi-web");
     expect(findThemePairForTheme(themePairs, "themes:pi-web-dark")?.id).toBe("themes:pi-web");
+  });
+});
+
+describe("appThemeColorForScheme", () => {
+  it("uses a light installed-app frame for light themes", () => {
+    expect(appThemeColorForScheme("light")).toBe("#f7f9fc");
+  });
+
+  it("uses a dark installed-app frame for dark themes", () => {
+    expect(appThemeColorForScheme("dark")).toBe("#090d14");
   });
 });
 

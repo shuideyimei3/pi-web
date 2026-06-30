@@ -1,4 +1,5 @@
 export const PWA_DISPLAY_MODE_QUERIES = [
+  "(display-mode: window-controls-overlay)",
   "(display-mode: standalone)",
   "(display-mode: fullscreen)",
   "(display-mode: minimal-ui)",

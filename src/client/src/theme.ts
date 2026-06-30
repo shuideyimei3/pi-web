@@ -24,6 +24,8 @@ export const CLASSIC_THEME_ID: QualifiedContributionId = "themes:classic";
 export const DEFAULT_THEME_ID: QualifiedContributionId = "themes:pi-web-dark";
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = { themeId: DEFAULT_THEME_ID, auto: true };
 export const THEME_STORAGE_KEY = "pi-web-app-theme";
+export const DARK_APP_THEME_COLOR = "#090d14";
+export const LIGHT_APP_THEME_COLOR = "#f7f9fc";
 
 export const THEME_TOKENS: ThemeToken[] = [
   "--pi-bg",
@@ -102,6 +104,15 @@ export function applyPiWebTheme(theme: QualifiedThemeContribution): void {
     if (typeof value === "string" && value !== "") root.style.setProperty(token, value);
     else root.style.removeProperty(token);
   }
+}
+
+export function appThemeColorForScheme(colorScheme: QualifiedThemeContribution["colorScheme"]): string {
+  return colorScheme === "light" ? LIGHT_APP_THEME_COLOR : DARK_APP_THEME_COLOR;
+}
+
+export function applyDocumentThemeColor(theme: QualifiedThemeContribution): void {
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  meta?.setAttribute("content", appThemeColorForScheme(theme.colorScheme));
 }
 
 export function resolveThemePreference(options: ResolveThemePreferenceOptions): ThemePreferenceResolution {
