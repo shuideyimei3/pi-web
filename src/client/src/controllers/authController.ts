@@ -25,14 +25,6 @@ export class AuthController {
     this.stopPolling();
   }
 
-  handleSlashCommand(text: string): boolean {
-    const parsed = parseAuthSlashCommand(text);
-    if (parsed === undefined) return false;
-    if (parsed.command === "login") void this.openLogin(parsed.providerId);
-    else void this.openLogout(parsed.providerId);
-    return true;
-  }
-
   async openLogin(providerId?: string): Promise<void> {
     if (providerId !== undefined && providerId !== "") {
       await this.openLoginProvider(providerId);
@@ -258,16 +250,6 @@ export class AuthController {
     if (session === undefined || session.archived === true) return undefined;
     return session;
   }
-}
-
-export function parseAuthSlashCommand(text: string): { command: "login" | "logout"; providerId?: string } | undefined {
-  const trimmed = text.trim();
-  const match = /^\/(login|logout)(?:\s+(\S+))?\s*$/u.exec(trimmed);
-  if (match === null) return undefined;
-  const command = match[1];
-  if (command !== "login" && command !== "logout") return undefined;
-  const providerId = match[2];
-  return providerId === undefined || providerId === "" ? { command } : { command, providerId };
 }
 
 export type { AuthDialogState } from "../appState";

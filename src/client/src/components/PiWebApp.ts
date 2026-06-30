@@ -1,6 +1,6 @@
 import { LitElement, html } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
-import { configApi, effectiveWorkspaceUploadFolder, EXTENSION_OVERLAY_CLOSE_VALUE, EXTENSION_OVERLAY_KEY_PREFIX, piWebApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type RealtimeEvent, type SessionInfo, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
+import { configApi, effectiveWorkspaceUploadFolder, EXTENSION_OVERLAY_CLOSE_VALUE, EXTENSION_OVERLAY_KEY_PREFIX, piWebApi, sessionsApi, terminalsApi, workspacesApi, workspaceEffectiveUploadFolder, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type RealtimeEvent, type SessionInfo, type SlashCommand, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
@@ -34,6 +34,7 @@ import { PanelResizeController, type PanelResizeConstraints, type ResizablePanel
 import { readRoute, writeRoute, type AppRoute } from "../route";
 import { readSettingsSection, writeSettingsSection, type SettingsSection } from "../settingsRoute";
 import { applyActiveShortcutPreferences } from "../shortcutPreferences";
+import { isWebSlashCommandName, parseSlashCommandInput, settingsSectionFromSlashArgument, slashCommandArguments } from "../slashCommands";
 import { createTerminalCommandRunsRuntime } from "../runtime/terminalRuntime";
 import { isWorkspaceDeletionPending, isWorkspaceDeletionRunPending, latestWorkspaceDeletionRuns, pendingWorkspaceDeletionIds, targetWorkspaceIdForRun, workspaceDeletionRunFilter } from "../workspaceDeletion";
 import "./MachineList";
@@ -1083,6 +1084,7 @@ export class PiWebApp extends LitElement {
         .onArchiveSessions=${(sessions: SessionInfo[]) => this.sessions.archiveSessions(sessions)}
         .onRestoreSession=${(session: SessionInfo) => this.selectNavigationItem("sessions", "chat", () => this.sessions.restoreSession(session))}
         .onDeleteCachedNewSession=${(session: SessionInfo) => this.sessions.deleteCachedNewSession(session)}
+        .onDeleteSession=${(session: SessionInfo) => this.sessions.deleteSession(session)}
         .onDeleteArchivedSession=${(session: SessionInfo) => this.sessions.deleteArchivedSessions([session])}
         .onDeleteArchivedSessions=${(sessions: SessionInfo[]) => this.sessions.deleteArchivedSessions(sessions)}
         .onDetachParentSession=${(session: SessionInfo) => this.sessions.detachParent(session)}
@@ -1745,9 +1747,116 @@ export class PiWebApp extends LitElement {
   }
 
   private sendPrompt(text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery): void {
+    void this.routePrompt(text, streamingBehavior, attachments, delivery);
+  }
+
+  private async routePrompt(text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery): Promise<void> {
     const hasAttachments = attachments !== undefined && attachments.length > 0;
-    if (!hasAttachments && streamingBehavior === undefined && this.auth.handleSlashCommand(text)) return;
-    void this.sessions.send(text, streamingBehavior, attachments, delivery);
+    if (!hasAttachments && await this.handleWebSlashCommand(text)) return;
+    await this.sessions.send(text, streamingBehavior, attachments, delivery);
+  }
+
+  private async handleWebSlashCommand(text: string): Promise<boolean> {
+    const parsed = parseSlashCommandInput(text);
+    if (parsed === undefined || !isWebSlashCommandName(parsed.name)) return false;
+    if (await this.hasRuntimeSlashCommand(parsed.name)) return false;
+
+    const args = slashCommandArguments(parsed.args);
+    if (parsed.name === "model") {
+      await this.runModelSlashCommand(parsed.args);
+      return true;
+    }
+    if (parsed.name === "thinking") {
+      await this.runThinkingSlashCommand(parsed.args);
+      return true;
+    }
+    if (parsed.name === "settings") {
+      this.runSettingsSlashCommand(args);
+      return true;
+    }
+    if (parsed.name === "hotkeys") {
+      this.openSettings("shortcuts");
+      return true;
+    }
+    if (parsed.name === "login") {
+      this.runAuthSlashCommand("login", args);
+      return true;
+    }
+    if (parsed.name === "logout") {
+      this.runAuthSlashCommand("logout", args);
+      return true;
+    }
+    if (parsed.name === "new") {
+      await this.sessions.startSession();
+      return true;
+    }
+    if (parsed.name === "theme") {
+      this.openThemeDialog();
+      return true;
+    }
+    if (parsed.name === "terminal") {
+      this.openTerminal();
+      return true;
+    }
+    if (parsed.name === "refresh") {
+      await this.refreshAppData();
+      return true;
+    }
+    return false;
+  }
+
+  private async hasRuntimeSlashCommand(name: string): Promise<boolean> {
+    const session = this.state.selectedSession;
+    if (session === undefined || session.archived === true) return false;
+    try {
+      const commands = await sessionsApi.commands(session, selectedMachineId(this.state));
+      return commands.some((command) => command.name.toLowerCase() === name.toLowerCase() && isRuntimeSlashCommand(command));
+    } catch {
+      return false;
+    }
+  }
+
+  private async runModelSlashCommand(args: string): Promise<void> {
+    if (args === "") {
+      await this.openModelDialog();
+      return;
+    }
+    const slash = args.indexOf("/");
+    if (slash <= 0 || slash === args.length - 1) {
+      this.setState({ error: "Usage: /model <provider>/<model>" });
+      return;
+    }
+    await this.sessions.setModel(args.slice(0, slash), args.slice(slash + 1));
+  }
+
+  private async runThinkingSlashCommand(args: string): Promise<void> {
+    if (args === "") {
+      await this.openThinkingDialog();
+      return;
+    }
+    await this.sessions.setThinkingLevel(args);
+  }
+
+  private runSettingsSlashCommand(args: string[]): void {
+    if (args.length > 1) {
+      this.setState({ error: "Usage: /settings [general|sessiond|plugins|shortcuts]" });
+      return;
+    }
+    const section = settingsSectionFromSlashArgument(args[0]);
+    if (section === undefined) {
+      this.setState({ error: "Usage: /settings [general|sessiond|plugins|shortcuts]" });
+      return;
+    }
+    this.openSettings(section);
+  }
+
+  private runAuthSlashCommand(command: "login" | "logout", args: string[]): void {
+    if (args.length > 1) {
+      this.setState({ error: `Usage: /${command} [provider]` });
+      return;
+    }
+    if (command === "login") void this.auth.openLogin(args[0]);
+    else void this.auth.openLogout(args[0]);
   }
 
   private renderContextBar() {
@@ -1838,6 +1947,10 @@ function createPluginRegistry(): PluginRegistry {
   registry.register({ id: "core", plugin: corePlugin });
   registry.register({ id: "themes", plugin: themePackPlugin });
   return registry;
+}
+
+function isRuntimeSlashCommand(command: SlashCommand): boolean {
+  return command.source === "extension" || command.source === "prompt" || command.source === "skill";
 }
 
 function pluginMachineFromState(state: Pick<AppState, "selectedMachine">): PluginMachine {

@@ -564,6 +564,44 @@ describe("SessionController", () => {
     expect(state.selectedSession?.id).toBe(nextSession.id);
   });
 
+  it("deletes a current session by archiving it first, then removing the archived record", async () => {
+    const nextSession = { ...oldSession, id: "next-session", path: "/tmp/next-session.jsonl" };
+    const calls: string[] = [];
+    let state: AppState = {
+      ...initialAppState(),
+      selectedWorkspace: workspace,
+      selectedSession: oldSession,
+      sessions: [oldSession, nextSession],
+      machineRuntimes: { local: { machineId: "local", ok: true, checkedAt: "now", capabilities: [PI_WEB_CAPABILITIES.sessionsDeleteArchived] } },
+    };
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      archive: (session) => {
+        calls.push(`archive:${sessionLookupId(session)}`);
+        return Promise.resolve({ archived: true });
+      },
+      deleteArchived: (session) => {
+        calls.push(`delete:${sessionLookupId(session)}`);
+        return Promise.resolve({ deleted: true });
+      },
+      messages: () => Promise.resolve(emptyPage),
+      status: (session) => Promise.resolve(status(sessionLookupId(session))),
+    };
+    const controller = new SessionController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      () => undefined,
+      new InMemorySessionSelectionMemory(),
+      { api, socket: new FakeSocket() },
+    );
+
+    await controller.deleteSession(oldSession);
+
+    expect(calls).toEqual([`archive:${oldSession.id}`, `delete:${oldSession.id}`]);
+    expect(state.sessions.map((session) => session.id)).toEqual([nextSession.id]);
+    expect(state.selectedSession?.id).toBe(nextSession.id);
+  });
+
   it("deletes selected archived sessions in bulk and selects the next current session", async () => {
     const archivedSession = { ...oldSession, archived: true, archivedAt: "later" };
     const nextSession = { ...oldSession, id: "next-session", path: "/tmp/next-session.jsonl" };

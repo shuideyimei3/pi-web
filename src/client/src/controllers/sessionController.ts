@@ -345,18 +345,52 @@ export class SessionController {
       return session.id;
     }));
     const deletedIds = fulfilledValues(results);
-    if (deletedIds.length > 0) {
-      const deletedIdSet = new Set(deletedIds);
-      const state = this.getState();
-      const nextSessions = state.sessions.filter((session) => !deletedIdSet.has(session.id));
-      this.setState({ sessions: nextSessions });
-      if (state.selectedSession !== undefined && deletedIdSet.has(state.selectedSession.id)) {
-        const next = nextSessions.find((session) => session.archived !== true) ?? nextSessions[0];
-        if (next !== undefined) await this.selectSession(next);
-        else this.deselectSession({ forgetRememberedSelection: true });
-      }
-    }
+    if (deletedIds.length > 0) await this.removeDeletedSessions(deletedIds);
     this.applyBulkSessionError("Delete", results);
+  }
+
+  async deleteSession(session = this.getState().selectedSession): Promise<void> {
+    if (!session) return;
+    if (isCachedNewSessionInfo(session)) {
+      await this.deleteCachedNewSession(session);
+      return;
+    }
+    if (session.archived === true) {
+      await this.deleteArchivedSessions([session]);
+      return;
+    }
+
+    const machineId = selectedMachineId(this.getState());
+    const runtime = this.getState().machineRuntimes[machineId];
+    if (runtime?.ok !== true || !supportsPiWebCapability(runtime, PI_WEB_CAPABILITIES.sessionsDeleteArchived)) {
+      this.setState({ error: "Deleting sessions requires an updated Pi-Web runtime on this machine." });
+      return;
+    }
+
+    try {
+      await this.api.archive(session, machineId);
+      await this.api.deleteArchived(session, machineId);
+      await this.removeDeletedSessions([session.id]);
+    } catch (error) {
+      this.setState({ error: String(error) });
+    }
+  }
+
+  private async removeDeletedSessions(deletedIds: readonly string[]): Promise<void> {
+    if (deletedIds.length === 0) return;
+    const deletedIdSet = new Set(deletedIds);
+    for (const sessionId of deletedIdSet) {
+      clearDraft(this.sessionCacheKey(sessionId));
+      this.transcripts.discard(this.sessionCacheKey(sessionId));
+    }
+    const state = this.getState();
+    const nextSessions = state.sessions.filter((session) => !deletedIdSet.has(session.id));
+    this.setState({ sessions: nextSessions });
+    if (state.selectedSession !== undefined && deletedIdSet.has(state.selectedSession.id)) {
+      const next = nextSessions.find((session) => session.archived !== true) ?? nextSessions[0];
+      if (next !== undefined) await this.selectSession(next);
+      else this.deselectSession({ forgetRememberedSelection: true });
+    }
   }
 
   async deleteCachedNewSession(session = this.getState().selectedSession) {

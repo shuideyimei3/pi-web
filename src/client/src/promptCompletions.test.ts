@@ -95,4 +95,14 @@ describe("matchingSlashCommands", () => {
     expect(matchingSlashCommands(commands, "pre").map((command) => command.name)).toEqual(["preview-plan"]);
     expect(matchingSlashCommands(commands, "rev").map((command) => command.name)).toEqual(["review", "preview-plan"]);
   });
+
+  it("deduplicates same-name commands by the source that would execute first", () => {
+    const commands = [
+      { name: "model", source: "builtin" as const },
+      { name: "model", source: "extension" as const },
+      { name: "review", source: "prompt" as const },
+    ];
+
+    expect(matchingSlashCommands(commands, "model")).toEqual([{ name: "model", source: "extension" }]);
+  });
 });

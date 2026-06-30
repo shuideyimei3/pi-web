@@ -1,5 +1,6 @@
 const ACTION_MENU_GAP_PX = 0;
 const ACTION_MENU_MIN_USEFUL_HEIGHT_PX = 120;
+const ACTION_MENU_MIN_WIDTH_PX = 120;
 
 interface ActionMenuRect {
   top: number;
@@ -23,6 +24,9 @@ export function actionMenuPanelStyle(target: EventTarget | null, options: Action
   const topBound = Math.max(0, bounds.top);
   const bottomBound = Math.min(viewportHeight, bounds.bottom);
   const triggerRight = Math.min(trigger.right, rightBound);
+  const availableWidth = Math.max(0, rightBound - leftBound);
+  const targetWidth = Math.min(ACTION_MENU_MIN_WIDTH_PX, availableWidth);
+  const left = Math.min(Math.max(leftBound, triggerRight - targetWidth), Math.max(leftBound, rightBound - targetWidth));
   const availableBelow = bottomBound - trigger.bottom - ACTION_MENU_GAP_PX;
   const availableAbove = trigger.top - topBound - ACTION_MENU_GAP_PX;
   const placement = availableBelow < ACTION_MENU_MIN_USEFUL_HEIGHT_PX && availableAbove > availableBelow
@@ -31,8 +35,8 @@ export function actionMenuPanelStyle(target: EventTarget | null, options: Action
 
   return [
     ...placement,
-    `right: ${px(Math.max(0, viewportWidth - triggerRight))};`,
-    `max-width: ${px(Math.max(0, triggerRight - leftBound))};`,
+    `left: ${px(left)};`,
+    `max-width: ${px(Math.max(0, rightBound - left))};`,
   ].join(" ");
 }
 

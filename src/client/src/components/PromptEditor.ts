@@ -12,6 +12,7 @@ import { inputModeForDraft } from "../inputModes";
 import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, matchingSlashCommands, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, saveDraft } from "../promptDraftStorage";
+import { WEB_SLASH_COMMANDS } from "../slashCommands";
 import { loadAttachmentDelivery, saveAttachmentDelivery } from "../attachmentPreferences";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { promptEditorStyles, type CompletionItem } from "./shared";
@@ -302,9 +303,9 @@ export class PromptEditor extends LitElement {
       return;
     }
     if (trigger.kind === "command" && this.sessionId !== undefined && this.sessionId !== "" && this.cwd !== undefined && this.cwd !== "") {
-      const commands = await api.commands({ id: this.sessionId, cwd: this.cwd }, this.machineId).catch(emptySlashCommands);
+      const runtimeCommands = await api.commands({ id: this.sessionId, cwd: this.cwd }, this.machineId).catch(emptySlashCommands);
       if (version !== this.requestVersion) return;
-      this.completions = matchingSlashCommands(commands, trigger.query)
+      this.completions = matchingSlashCommands([...WEB_SLASH_COMMANDS, ...runtimeCommands], trigger.query)
         .map((command) => ({
           kind: "command",
           replaceFrom: trigger.from,

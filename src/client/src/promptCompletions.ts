@@ -37,6 +37,7 @@ export function matchingSlashCommands<TCommand extends SlashCommandCompletionSou
     .map((command) => ({ command, rank: slashCommandRank(command, normalizedQuery) }))
     .filter(hasSlashCommandRank)
     .sort((a, b) => compareSlashCommandMatches(a, b))
+    .filter(firstSlashCommandNameMatch())
     .slice(0, limit)
     .map((entry) => entry.command);
 }
@@ -97,6 +98,16 @@ function compareSlashCommandMatches<TCommand extends SlashCommandCompletionSourc
   return a.rank - b.rank
     || sourceRank(a.command.source) - sourceRank(b.command.source)
     || a.command.name.localeCompare(b.command.name);
+}
+
+function firstSlashCommandNameMatch(): (entry: { command: SlashCommandCompletionSource; rank: number }) => boolean {
+  const seen = new Set<string>();
+  return (entry) => {
+    const key = entry.command.name.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  };
 }
 
 function sourceRank(source: SlashCommandCompletionSource["source"]): number {

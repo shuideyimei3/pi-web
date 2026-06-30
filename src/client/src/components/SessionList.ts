@@ -47,6 +47,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   @property({ attribute: false }) onArchiveMany?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onRestore?: (session: SessionInfo) => void;
   @property({ attribute: false }) onDelete?: (session: SessionInfo) => void;
+  @property({ attribute: false }) onDeleteSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onDeleteArchived?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onDeleteArchivedMany?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onDetachParent?: (session: SessionInfo) => void;
@@ -57,18 +58,35 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   @state() private archivedExpanded = false;
   @state() private selectionScopes: ReadonlySet<SessionSelectionScope> = new Set();
   @state() private selectedSessionIds: ReadonlySet<string> = new Set();
+  private ignoreNextDocumentClick = false;
+
+  private readonly onDocumentPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0 || eventPathHasClass(event, "action-menu-toggle") || eventPathHasClass(event, "action-menu-panel")) return;
+    const hit = this.menuHitAtPoint(event.clientX, event.clientY);
+    if (hit === undefined) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.ignoreNextDocumentClick = true;
+    this.toggleMenu(hit.sessionId, hit.target);
+  };
 
   private readonly onDocumentClick = (event: MouseEvent) => {
+    if (this.ignoreNextDocumentClick) {
+      this.ignoreNextDocumentClick = false;
+      return;
+    }
     if (event.composedPath().includes(this)) return;
     this.openMenuSessionId = undefined;
   };
 
   override connectedCallback(): void {
     super.connectedCallback();
+    document.addEventListener("pointerdown", this.onDocumentPointerDown, true);
     document.addEventListener("click", this.onDocumentClick);
   }
 
   override disconnectedCallback(): void {
+    document.removeEventListener("pointerdown", this.onDocumentPointerDown, true);
     document.removeEventListener("click", this.onDocumentClick);
     super.disconnectedCallback();
   }
@@ -106,15 +124,16 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
         ${this.collapsed ? null : html`
           <div class="list-body">
             ${this.renderCurrentSelectionToolbar(currentSelectableSessions)}
-            ${currentRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "current"))}
+            ${currentRows.map((row) => this.renderSession(row, "current"))}
             ${archivedRows.length > 0 ? html`
               ${this.renderArchivedHeading(archivedRows.map((row) => row.session))}
               ${this.archivedExpanded ? html`
                 ${this.renderArchivedSelectionToolbar(archivedRows.map((row) => row.session))}
-                ${archivedRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0, "archived"))}
+                ${archivedRows.map((row) => this.renderSession(row, "archived"))}
               ` : null}
             ` : null}
           </div>
+          ${this.renderOpenMenu(descendantCounts)}
         `}
       </section>
     `;
@@ -195,52 +214,101 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     `;
   }
 
-  private renderSession(row: SessionRow, descendantCount: number, scope: SessionSelectionScope) {
+  private renderSession(row: SessionRow, scope: SessionSelectionScope) {
     const { session } = row;
     const cappedDepth = Math.min(row.depth, 2);
     const canBulkSelect = sessionSelectionScope(session) === scope;
     const selectionActive = this.selectionScopes.has(scope);
     const showsCheckbox = selectionActive && canBulkSelect;
     const bulkSelected = showsCheckbox && this.selectedSessionIds.has(session.id);
+    const selected = this.selected?.id === session.id;
+    const menuId = sessionMenuId(session.id);
+    const menuOpen = this.openMenuSessionId === session.id;
     return html`
       <div
-        class="action-row ${this.selected?.id === session.id ? "selected" : ""} ${bulkSelected ? "bulk-selected" : ""} ${session.archived === true ? "archived" : ""} ${selectionActive ? "selecting" : ""}"
+        class="action-row ${selected ? "selected" : ""} ${bulkSelected ? "bulk-selected" : ""} ${session.archived === true ? "archived" : ""} ${selectionActive ? "selecting" : ""}"
+        data-session-id=${session.id}
         style=${`--depth:${String(cappedDepth)}`}
         tabindex="0"
         title=${session.path}
-        @click=${(event: MouseEvent) => { activateSelectableRow(event, () => { this.activateSessionRow(session, scope); }); }}
         @keydown=${(event: KeyboardEvent) => { this.handleSessionKeydown(event, session, scope); }}
       >
-        <div class="action-main ${selectionActive ? "selecting" : ""}">
+        <div class="action-main ${selectionActive ? "selecting" : ""}" @click=${(event: MouseEvent) => { this.handleSessionMainClick(session, scope, event); }}>
           ${showsCheckbox ? html`<input class="session-checkbox" type="checkbox" aria-label=${`Select ${sessionLabel(session)}`} .checked=${bulkSelected} @click=${(event: MouseEvent) => { event.stopPropagation(); }} @change=${() => { this.toggleSelected(session.id); }}>` : null}
           <span class="action-name" dir="auto">${row.depth > 0 ? html`<span class="tree-marker">↳</span>` : null}${sessionLabel(session)}${row.depth > 2 ? html` <span class="badge">depth ${row.depth}</span>` : null}${row.hasMissingParent ? html` <span class="badge">parent unavailable</span>` : null}</span><small>${this.renderSessionMetaPrefix(session)}${String(session.messageCount)} messages</small>
           ${this.renderActivity(session)}
         </div>
         <div class="action-menu">
-          <button class="action-menu-toggle" title="Session actions" @click=${(event: MouseEvent) => { event.stopPropagation(); this.toggleMenu(session.id, event.currentTarget); }}>⋯</button>
-          ${this.openMenuSessionId === session.id ? html`
-            <div class="action-menu-panel" style=${this.menuStyle}>
-              ${isCachedNewSessionInfo(session)
-                ? html`<button title="Delete browser-cached new session" @click=${() => { this.openMenuSessionId = undefined; this.onDelete?.(session); }}>Delete</button>`
-                : session.archived === true
-                  ? html`
-                    <button title="Restore session" @click=${() => { this.openMenuSessionId = undefined; this.onRestore?.(session); }}>Restore</button>
-                    <button class="danger" title=${this.canDeleteArchived ? "Permanently delete archived session" : this.archivedDeleteUnavailableMessage} ?disabled=${!this.canDeleteArchived} @click=${() => { this.openMenuSessionId = undefined; this.confirmDeleteArchived(session); }}>Delete archived session</button>
-                  `
-                  : html`
-                    <button title="Archive session" @click=${() => { this.openMenuSessionId = undefined; this.onArchive?.(session); }}>Archive</button>
-                    ${descendantCount > 0 ? html`<button title="Archive this session and its descendants" @click=${() => { this.openMenuSessionId = undefined; this.confirmArchiveWithDescendants(session, descendantCount); }}>Archive with descendants (${descendantCount})</button>` : null}
-                    ${session.parentSessionPath !== undefined ? html`<button title="Detach from parent" @click=${() => { this.openMenuSessionId = undefined; this.onDetachParent?.(session); }}>Detach from parent</button>` : null}
-                    ${this.canReload ? html`<button title=${isSessionActive(this.statuses[session.id], this.activities[session.id]) ? "Stop current session activity before reloading" : "Reload session from disk"} ?disabled=${isSessionActive(this.statuses[session.id], this.activities[session.id])} @click=${() => { this.openMenuSessionId = undefined; this.onReload?.(session); }}>Reload</button>` : null}
-                  `}
-            </div>
-          ` : null}
+          <button
+            type="button"
+            class="action-menu-toggle"
+            title="Session actions"
+            aria-label=${`Actions for ${sessionLabel(session)}`}
+            aria-expanded=${String(menuOpen)}
+            aria-controls=${menuId}
+            @click=${(event: MouseEvent) => { this.handleMenuClick(session.id, event); }}
+          >⋯</button>
         </div>
       </div>
     `;
   }
 
+  private renderOpenMenu(descendantCounts: ReadonlyMap<string, number>) {
+    const sessionId = this.openMenuSessionId;
+    const session = sessionId === undefined ? undefined : this.sessions.find((candidate) => candidate.id === sessionId);
+    if (session === undefined) return null;
+    return html`
+      <div class="action-menu-panel" id=${sessionMenuId(session.id)} style=${this.menuStyle} @click=${(event: MouseEvent) => { event.stopPropagation(); }} @pointerdown=${(event: PointerEvent) => { event.stopPropagation(); }}>
+        ${this.renderSessionMenuItems(session, descendantCounts.get(session.id) ?? 0)}
+      </div>
+    `;
+  }
+
+  private renderSessionMenuItems(session: SessionInfo, descendantCount: number) {
+    if (isCachedNewSessionInfo(session)) return html`
+      <button title="Delete browser-cached new session" @click=${() => { this.openMenuSessionId = undefined; this.onDelete?.(session); }}>Delete</button>
+    `;
+    if (session.archived === true) return html`
+      <button title="Restore session" @click=${() => { this.openMenuSessionId = undefined; this.onRestore?.(session); }}>Restore</button>
+      <button class="danger" title=${this.canDeleteArchived ? "Permanently delete archived session" : this.archivedDeleteUnavailableMessage} ?disabled=${!this.canDeleteArchived} @click=${() => { this.openMenuSessionId = undefined; this.confirmDeleteArchived(session); }}>Delete archived session</button>
+    `;
+    return html`
+      <button title="Archive session" @click=${() => { this.openMenuSessionId = undefined; this.onArchive?.(session); }}>Archive</button>
+      <button class="danger" title=${this.canDeleteArchived ? "Permanently delete session" : this.archivedDeleteUnavailableMessage} ?disabled=${!this.canDeleteArchived} @click=${() => { this.openMenuSessionId = undefined; this.confirmDeleteSession(session); }}>Delete session</button>
+      ${descendantCount > 0 ? html`<button title="Archive this session and its descendants" @click=${() => { this.openMenuSessionId = undefined; this.confirmArchiveWithDescendants(session, descendantCount); }}>Archive with descendants (${descendantCount})</button>` : null}
+      ${session.parentSessionPath !== undefined ? html`<button title="Detach from parent" @click=${() => { this.openMenuSessionId = undefined; this.onDetachParent?.(session); }}>Detach from parent</button>` : null}
+      ${this.canReload ? html`<button title=${isSessionActive(this.statuses[session.id], this.activities[session.id]) ? "Stop current session activity before reloading" : "Reload session from disk"} ?disabled=${isSessionActive(this.statuses[session.id], this.activities[session.id])} @click=${() => { this.openMenuSessionId = undefined; this.onReload?.(session); }}>Reload</button>` : null}
+    `;
+  }
+
+  private menuHitAtPoint(clientX: number, clientY: number): { sessionId: string; target: EventTarget | null } | undefined {
+    const rows = Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".action-row"));
+    for (const row of rows) {
+      const rowBounds = row.getBoundingClientRect();
+      if (clientY < rowBounds.top || clientY > rowBounds.bottom) continue;
+      const menuButton = row.querySelector<HTMLElement>(".action-menu-toggle");
+      const menuBounds = menuButton?.getBoundingClientRect();
+      const hitLeft = Math.min(menuBounds?.left ?? rowBounds.right, rowBounds.right - 64);
+      const hitRight = Math.max(menuBounds?.right ?? rowBounds.right, rowBounds.right);
+      if (clientX < hitLeft || clientX > hitRight) continue;
+      const sessionId = row.dataset["sessionId"];
+      if (sessionId === undefined || sessionId === "") return undefined;
+      return { sessionId, target: menuButton ?? row };
+    }
+    return undefined;
+  }
+
+  private handleSessionMainClick(session: SessionInfo, scope: SessionSelectionScope, event: MouseEvent): void {
+    activateSelectableRow(event, () => { this.activateSessionRow(session, scope); });
+  }
+
   private handleSessionKeydown(event: KeyboardEvent, session: SessionInfo, scope: SessionSelectionScope): void {
+    if (event.key === "Escape" && this.openMenuSessionId === session.id) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.openMenuSessionId = undefined;
+      return;
+    }
     handleSelectableRowKeyboard(event, {
       activate: () => { this.activateSessionRow(session, scope); },
       previousSection: this.onFocusPreviousSection === undefined ? undefined : () => { void this.onFocusPreviousSection?.(); },
@@ -260,6 +328,11 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   private confirmArchiveWithDescendants(session: SessionInfo, descendantCount: number): void {
     const noun = descendantCount === 1 ? "descendant session" : "descendant sessions";
     if (confirm(`Archive “${sessionLabel(session)}” and ${String(descendantCount)} ${noun}?`)) this.onArchiveWithDescendants?.(session);
+  }
+
+  private confirmDeleteSession(session: SessionInfo): void {
+    if (!this.canDeleteArchived) return;
+    if (confirm(`Permanently delete session “${sessionLabel(session)}”? This cannot be undone.`)) void this.onDeleteSession?.(session);
   }
 
   private confirmDeleteArchived(session: SessionInfo): void {
@@ -335,12 +408,18 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     if (this.selectionScopes.has("current") && !this.sessions.some((session) => session.archived !== true)) this.closeSelection("current");
   }
 
-  private toggleMenu(sessionId: string, target: EventTarget | null) {
+  private handleMenuClick(sessionId: string, event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.toggleMenu(sessionId, event.currentTarget);
+  }
+
+  private toggleMenu(sessionId: string, target: EventTarget | null): void {
     if (this.openMenuSessionId === sessionId) {
       this.openMenuSessionId = undefined;
       return;
     }
-    this.menuStyle = actionMenuPanelStyle(target, { constrainTo: "viewport" });
+    this.menuStyle = actionMenuPanelStyle(target);
     this.openMenuSessionId = sessionId;
   }
 
@@ -383,7 +462,18 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
     .action-row.bulk-selected .action-main { border-color: var(--pi-accent); box-shadow: inset 3px 0 0 var(--pi-accent); }
     .action-main.selecting { padding-left: calc(32px + var(--depth, 0) * 16px); }
     .session-checkbox { position: absolute; top: 9px; left: calc(8px + var(--depth, 0) * 16px); z-index: 2; margin: 0; }
+    .action-menu { z-index: 30; display: flex; }
+    .action-menu-toggle { position: relative; z-index: 30; width: 44px; min-width: 44px; pointer-events: auto; touch-action: manipulation; }
+    .action-menu-panel { z-index: 10000; }
   `];
+}
+
+function sessionMenuId(sessionId: string): string {
+  return `session-menu-${sessionId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+function eventPathHasClass(event: Event, className: string): boolean {
+  return event.composedPath().some((target) => typeof HTMLElement !== "undefined" && target instanceof HTMLElement && target.classList.contains(className));
 }
 
 function sessionSelectionScope(session: SessionInfo): SessionSelectionScope {
