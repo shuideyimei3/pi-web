@@ -1,5 +1,6 @@
 import { api } from "../api";
 import { queryNamespace, setNamespacedQueryKey } from "../namespacedQueryArgs";
+import { workspaceRelativePath } from "../workspacePaths";
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 
 const GIT_ROUTE_NAMESPACE = queryNamespace("core:workspace.git");
@@ -23,7 +24,12 @@ export class GitController {
       this.setState({ gitStatus: status, gitStale: false, error: "" });
       const selectedDiffPath = this.getState().selectedDiffPath;
       if (selectedDiffPath !== undefined) {
-        if (status.files.some((file) => file.path === selectedDiffPath)) await this.refreshDiff(selectedDiffPath);
+        const diffPath = this.workspaceDiffPath(selectedDiffPath);
+        if (diffPath !== selectedDiffPath) {
+          this.setState({ selectedDiffPath: diffPath });
+          setNamespacedQueryKey(GIT_ROUTE_NAMESPACE, "diff", diffPath, { replace: true });
+        }
+        if (status.files.some((file) => file.path === diffPath)) await this.refreshDiff(diffPath);
         else {
           this.setState({ selectedDiffPath: undefined, selectedDiff: undefined, selectedStagedDiff: undefined });
           setNamespacedQueryKey(GIT_ROUTE_NAMESPACE, "diff", undefined, { replace: true });
@@ -35,25 +41,28 @@ export class GitController {
   }
 
   async selectDiff(path: string): Promise<void> {
-    this.setState({ selectedDiffPath: path, selectedDiff: undefined, selectedStagedDiff: undefined, workspaceTool: "core:workspace.git", mainView: this.getState().mainView === "chat" ? "chat" : "core:workspace.git" });
-    setNamespacedQueryKey(GIT_ROUTE_NAMESPACE, "diff", path);
+    const diffPath = this.workspaceDiffPath(path);
+    this.setState({ selectedDiffPath: diffPath, selectedDiff: undefined, selectedStagedDiff: undefined, workspaceTool: "core:workspace.git", mainView: this.getState().mainView === "chat" ? "chat" : "core:workspace.git" });
+    setNamespacedQueryKey(GIT_ROUTE_NAMESPACE, "diff", diffPath);
     this.updateUrl({ replace: true });
-    await this.refreshDiff(path);
+    await this.refreshDiff(diffPath);
   }
 
   async restoreDiff(path: string): Promise<void> {
-    this.setState({ selectedDiffPath: path, selectedDiff: undefined, selectedStagedDiff: undefined });
-    await this.refreshDiff(path);
+    const diffPath = this.workspaceDiffPath(path);
+    this.setState({ selectedDiffPath: diffPath, selectedDiff: undefined, selectedStagedDiff: undefined });
+    await this.refreshDiff(diffPath);
   }
 
   async refreshDiff(path: string): Promise<void> {
     const project = this.getState().selectedProject;
     const workspace = this.getState().selectedWorkspace;
     if (project === undefined || workspace === undefined) return;
+    const diffPath = this.workspaceDiffPath(path);
     try {
       const [selectedDiff, selectedStagedDiff] = await Promise.all([
-        api.gitDiff(project.id, workspace.id, { path }, selectedMachineId(this.getState())),
-        api.gitDiff(project.id, workspace.id, { path, staged: true }, selectedMachineId(this.getState())),
+        api.gitDiff(project.id, workspace.id, { path: diffPath }, selectedMachineId(this.getState())),
+        api.gitDiff(project.id, workspace.id, { path: diffPath, staged: true }, selectedMachineId(this.getState())),
       ]);
       this.setState({ selectedDiff, selectedStagedDiff, error: "" });
     } catch (error) {
@@ -67,5 +76,9 @@ export class GitController {
     if (state.workspaceTool === "core:workspace.git" || state.mainView === "core:workspace.git") {
       this.pollTimer = window.setInterval(() => { void this.refreshGit(); }, 8000);
     }
+  }
+
+  private workspaceDiffPath(path: string): string {
+    return workspaceRelativePath(path, this.getState().selectedWorkspace?.path);
   }
 }

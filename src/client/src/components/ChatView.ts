@@ -70,6 +70,7 @@ export class ChatView extends LitElement {
   @property({ type: Number }) pendingMessageCount = 0;
   @property({ attribute: false }) status?: SessionStatus;
   @property({ attribute: false }) activity?: SessionActivity;
+  @property({ attribute: false }) workspacePath?: string;
   @property({ attribute: false }) onLoadMore?: () => void;
   @property({ attribute: false }) onOpenWorkspaceFile?: (path: string) => void;
   @property({ attribute: false }) onReviewWorkspaceFile?: (path: string) => void;
@@ -327,7 +328,12 @@ export class ChatView extends LitElement {
       }
       if (node.type === "assistant") {
         if (assistantFooterKeys.has(node.key)) {
-          if (responseMessages.length > 0) summaries.set(node.key, buildSessionWorkSummary({ messages: responseMessages }));
+          if (responseMessages.length > 0) {
+            summaries.set(node.key, buildSessionWorkSummary({
+              messages: responseMessages,
+              ...(this.workspacePath === undefined ? {} : { selectedWorkspace: { label: "", path: this.workspacePath } }),
+            }));
+          }
           responseMessages = [];
         }
         continue;

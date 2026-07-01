@@ -51,6 +51,21 @@ describe("buildSessionWorkSummary", () => {
     expect(JSON.stringify(summary)).not.toContain("private reasoning");
   });
 
+  it("normalizes file mutation paths inside the selected workspace", () => {
+    const summary = buildSessionWorkSummary({
+      messages: [
+        line("tool", [
+          tool("edit", "success", { path: "/repo/src/App.ts" }, { diff: "-old\n+new" }),
+        ]),
+      ],
+      selectedWorkspace: { label: "pi-web", path: "/repo" },
+    });
+
+    expect(summary.filesChanged).toEqual([
+      { label: "Edited file", path: "src/App.ts", detail: "src/App.ts · +1 -1", status: "success", added: 1, removed: 1 },
+    ]);
+  });
+
   it("splits multi-file diffs into per-file edit counts", () => {
     const summary = buildSessionWorkSummary({
       messages: [

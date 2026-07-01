@@ -1,5 +1,6 @@
 import type { GitFileState, GitStatusResponse, SessionStatus, Workspace } from "./api";
 import type { ChatLine, ChatPart, ToolExecutionPart } from "./components/shared";
+import { workspaceRelativePath } from "./workspacePaths";
 
 export type SessionWorkSummaryStatus = "idle" | "pending" | "running" | "success" | "error";
 
@@ -52,8 +53,9 @@ export function buildSessionWorkSummary(input: SessionWorkSummaryInput): Session
   const tools = collectToolAggregates(input.messages);
   const shellCommands = collectShellCommands(input.messages);
   const latestRequest = latestUserText(input.messages);
+  const workspaceRoot = input.selectedWorkspace?.path;
   const filesChanged = uniqueByLabelAndDetail([
-    ...tools.flatMap(fileChangesFromTool),
+    ...tools.flatMap((tool) => fileChangesFromTool(tool, workspaceRoot)),
     ...gitFilesChanged(input.gitStatus),
   ]);
   const commandsRun = uniqueCommands([
@@ -153,7 +155,7 @@ function sourceFromSkillPart(message: ChatLine): SessionWorkSummaryLine[] {
   });
 }
 
-function fileChangesFromTool(tool: ToolAggregate): SessionWorkSummaryFile[] {
+function fileChangesFromTool(tool: ToolAggregate, workspaceRoot: string | undefined): SessionWorkSummaryFile[] {
   const name = toolName(tool);
   if (!isFileMutationTool(name)) return [];
   const args = toolArgs(tool);
@@ -162,24 +164,28 @@ function fileChangesFromTool(tool: ToolAggregate): SessionWorkSummaryFile[] {
   const perFileStats = diffFileStats(diff);
   const label = fileActionLabel(name);
   if (perFileStats.length > 0) {
-    return perFileStats.map((file) => ({
-      label,
-      path: file.path,
-      detail: `${file.path} · ${diffSummary(file)}`,
-      status: toolStatus(tool),
-      added: file.added,
-      removed: file.removed,
-    }));
+    return perFileStats.map((file) => {
+      const relativePath = workspaceRelativePath(file.path, workspaceRoot);
+      return {
+        label,
+        path: relativePath,
+        detail: `${relativePath} · ${diffSummary(file)}`,
+        status: toolStatus(tool),
+        added: file.added,
+        removed: file.removed,
+      };
+    });
   }
   const stats = diffStats(diff);
   if (path === undefined) {
     if (stats === undefined) return [];
     return [{ label, path: "diff", detail: diffSummary(stats), status: toolStatus(tool), ...stats }];
   }
+  const relativePath = workspaceRelativePath(path, workspaceRoot);
   return [{
     label,
-    path,
-    detail: stats === undefined ? path : `${path} · ${diffSummary(stats)}`,
+    path: relativePath,
+    detail: stats === undefined ? relativePath : `${relativePath} · ${diffSummary(stats)}`,
     status: toolStatus(tool),
     ...(stats ?? {}),
   }];
