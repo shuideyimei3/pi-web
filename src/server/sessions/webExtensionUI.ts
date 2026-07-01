@@ -131,13 +131,11 @@ export class WebExtensionUIContext {
     options?: CustomOptions,
   ): Promise<T | undefined> {
     const requestId = this.nextDialogId();
-    const overlay = options?.overlay === true;
     let component: ComponentLike | undefined;
     let settled = false;
 
     return new Promise((resolve) => {
       const publishClose = (): void => {
-        if (!overlay) return;
         this.events.publish(this.sessionId, { type: "extension.overlay.close", requestId });
       };
       const finish = (result: T | undefined): void => {
@@ -149,7 +147,7 @@ export class WebExtensionUIContext {
         resolve(result);
       };
       const publishRender = (status: "working" | "ready"): void => {
-        if (!overlay || component === undefined || settled) return;
+        if (component === undefined || settled) return;
         const lines = renderComponent(component);
         this.events.publish(this.sessionId, {
           type: "extension.overlay",
@@ -167,33 +165,31 @@ export class WebExtensionUIContext {
         width: DEFAULT_WIDTH,
         height: DEFAULT_HEIGHT,
         requestRender: () => {
-          publishRender(overlay ? "ready" : "working");
+          publishRender("ready");
         },
       };
 
-      if (overlay) {
-        this.pendingDialogs.set(requestId, {
-          resolve: () => {
-            finish(undefined);
-          },
-          handleInput: (data) => {
-            component?.handleInput?.(data);
-            publishRender("ready");
-          },
-        });
-      }
+      this.pendingDialogs.set(requestId, {
+        resolve: () => {
+          finish(undefined);
+        },
+        handleInput: (data) => {
+          component?.handleInput?.(data);
+          publishRender("ready");
+        },
+      });
 
       Promise.resolve()
         .then(() => factory(tui, webTheme(), webKeybindings(), finish))
         .then((created) => {
           component = created;
-          publishRender(overlay ? "ready" : "working");
+          publishRender("ready");
           options?.onHandle?.({
             close: () => {
               finish(undefined);
             },
             requestRender: () => {
-              publishRender(overlay ? "ready" : "working");
+              publishRender("ready");
             },
           });
         })
@@ -270,6 +266,18 @@ export class WebExtensionUIContext {
     this.events.publish(this.sessionId, { type: "extension.overlay.close", requestId });
     pending.resolve(value === undefined || value === "" || value === EXTENSION_OVERLAY_CLOSE_VALUE ? undefined : value);
     return true;
+  }
+
+  cancelAllDialogs(): void {
+    const pending = Array.from(this.pendingDialogs.entries());
+    for (const [requestId, dialog] of pending) {
+      if (!this.pendingDialogs.has(requestId)) continue;
+      if (dialog.handleInput === undefined) {
+        this.pendingDialogs.delete(requestId);
+        this.events.publish(this.sessionId, { type: "extension.overlay.close", requestId });
+      }
+      dialog.resolve(undefined);
+    }
   }
 
   private nextDialogId(): string {

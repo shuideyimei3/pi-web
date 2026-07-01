@@ -42,7 +42,7 @@ describe("WebExtensionUIContext", () => {
     expect(hub.sessionEvents.some(({ event }) => event.type === "extension.overlay.close" && event.requestId === overlayEvent.overlay.requestId)).toBe(true);
   });
 
-  it("does not publish browser overlays for non-overlay custom UI", async () => {
+  it("publishes non-overlay custom UI as browser dialogs", async () => {
     const hub = new CapturingSessionEventHub();
     const ui = new WebExtensionUIContext("s1", hub);
     let complete: ((value: string) => void) | undefined;
@@ -56,12 +56,46 @@ describe("WebExtensionUIContext", () => {
     });
     await flushMicrotasks();
 
-    expect(hub.sessionEvents.map(({ event }) => event.type)).not.toContain("extension.overlay");
+    const overlayEvent = hub.sessionEvents.find(({ event }) => event.type === "extension.overlay")?.event;
+    expect(overlayEvent).toMatchObject({
+      type: "extension.overlay",
+      overlay: { body: "Thinking...", status: "ready", closable: true },
+    });
+    if (overlayEvent?.type !== "extension.overlay") throw new Error("Expected overlay event");
     complete?.("answer");
 
     await expect(resultPromise).resolves.toBe("answer");
-    expect(hub.sessionEvents.map(({ event }) => event.type)).not.toContain("extension.overlay");
-    expect(hub.sessionEvents.map(({ event }) => event.type)).not.toContain("extension.overlay.close");
+    expect(hub.sessionEvents.some(({ event }) => event.type === "extension.overlay.close" && event.requestId === overlayEvent.overlay.requestId)).toBe(true);
+  });
+
+  it("forwards browser key input to non-overlay custom components", async () => {
+    const hub = new CapturingSessionEventHub();
+    const ui = new WebExtensionUIContext("s1", hub);
+    let input = "initial";
+
+    const resultPromise = ui.custom<string | undefined>((tui, theme, keys, done) => {
+      void tui;
+      void theme;
+      void keys;
+      return {
+        handleInput: (data: string) => {
+          input = data;
+          if (data === "1") done("selected");
+        },
+        render: () => [`input ${input}`],
+      };
+    });
+    await flushMicrotasks();
+
+    const overlayEvent = hub.sessionEvents.find(({ event }) => event.type === "extension.overlay")?.event;
+    if (overlayEvent?.type !== "extension.overlay") throw new Error("Expected overlay event");
+
+    expect(ui.respondToDialog(overlayEvent.overlay.requestId, `${EXTENSION_OVERLAY_KEY_PREFIX}${encodeURIComponent("j")}`)).toBe(true);
+    expect(lastOverlayBody(hub)).toBe("input j");
+    expect(ui.respondToDialog(overlayEvent.overlay.requestId, `${EXTENSION_OVERLAY_KEY_PREFIX}${encodeURIComponent("1")}`)).toBe(true);
+
+    await expect(resultPromise).resolves.toBe("selected");
+    expect(hub.sessionEvents.some(({ event }) => event.type === "extension.overlay.close" && event.requestId === overlayEvent.overlay.requestId)).toBe(true);
   });
 
   it("forwards browser overlay key input to custom components and republishes the render", async () => {
@@ -92,6 +126,28 @@ describe("WebExtensionUIContext", () => {
 
     expect(ui.respondToDialog(overlayEvent.overlay.requestId, "")).toBe(true);
     await expect(resultPromise).resolves.toBeUndefined();
+  });
+
+  it("cancels pending dialogs when the session is aborted", async () => {
+    const hub = new CapturingSessionEventHub();
+    const ui = new WebExtensionUIContext("s1", hub);
+
+    const resultPromise = ui.custom((tui, theme, keys, done) => {
+      void tui;
+      void theme;
+      void keys;
+      void done;
+      return { render: () => ["Waiting"] };
+    });
+    await flushMicrotasks();
+
+    const overlayEvent = hub.sessionEvents.find(({ event }) => event.type === "extension.overlay")?.event;
+    if (overlayEvent?.type !== "extension.overlay") throw new Error("Expected overlay event");
+
+    ui.cancelAllDialogs();
+
+    await expect(resultPromise).resolves.toBeUndefined();
+    expect(hub.sessionEvents.some(({ event }) => event.type === "extension.overlay.close" && event.requestId === overlayEvent.overlay.requestId)).toBe(true);
   });
 });
 

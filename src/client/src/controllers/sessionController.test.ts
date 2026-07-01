@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { api as defaultApi, type MessagePage, type PromptAttachment, type SessionActivity, type SessionInfo, type SessionRef, type SessionStatus, type Workspace } from "../api";
 import { isCachedNewSessionInfo, loadCachedNewSessions, markCachedNewSessionInfo, rememberCachedNewSession } from "../cachedNewSessions";
 import { initialAppState, type AppState } from "../appState";
@@ -278,6 +278,108 @@ describe("SessionController", () => {
     expect(sendingDuringPrompt).toEqual({ [oldSession.id]: true });
     expect(state.sendingPrompts).toEqual({});
     expect(promptArgs).toEqual({ attachments });
+  });
+
+  it("falls back to stopping the session when abort does not settle", async () => {
+    vi.useFakeTimers();
+    try {
+      const calls: string[] = [];
+      let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedSession: oldSession, sessions: [oldSession] };
+      const api: typeof defaultApi = {
+        ...defaultApi,
+        abort: () => new Promise<{ aborted: true }>(() => undefined),
+        stop: () => {
+          calls.push("stop");
+          return Promise.resolve({ stopped: true });
+        },
+        messages: () => Promise.resolve(emptyPage),
+        status: (session) => Promise.resolve(status(sessionLookupId(session))),
+      };
+      const controller = new SessionController(
+        () => state,
+        (patch) => { state = { ...state, ...patch }; },
+        () => undefined,
+        undefined,
+        { api, socket: new FakeSocket() },
+      );
+
+      const stop = controller.stopActiveWork();
+      await vi.advanceTimersByTimeAsync(2500);
+      await stop;
+
+      expect(calls).toEqual(["stop"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to stopping the session when abort fails", async () => {
+    const calls: string[] = [];
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedSession: oldSession, sessions: [oldSession] };
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      abort: () => Promise.reject(new Error("abort failed")),
+      stop: () => {
+        calls.push("stop");
+        return Promise.resolve({ stopped: true });
+      },
+      messages: () => Promise.resolve(emptyPage),
+      status: (session) => Promise.resolve(status(sessionLookupId(session))),
+    };
+    const controller = new SessionController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      () => undefined,
+      undefined,
+      { api, socket: new FakeSocket() },
+    );
+
+    await controller.stopActiveWork();
+
+    expect(calls).toEqual(["stop"]);
+    expect(state.error).toBe("");
+  });
+
+  it("clears active UI state locally when stopping work", async () => {
+    vi.useFakeTimers();
+    try {
+      const activeStatus = { ...status(oldSession.id), isStreaming: true, pendingMessageCount: 1, queuedMessages: [{ kind: "followUp" as const, text: "queued" }] };
+      const activeActivity: SessionActivity = { sessionId: oldSession.id, phase: "active", label: "waiting for input", at: "2026-05-15T00:00:00.000Z" };
+      let state: AppState = {
+        ...initialAppState(),
+        selectedWorkspace: workspace,
+        selectedSession: oldSession,
+        sessions: [oldSession],
+        status: activeStatus,
+        activity: activeActivity,
+        sessionActivities: { [oldSession.id]: activeActivity },
+        extensionOverlay: { requestId: "overlay-1", title: "Question", body: "Proceed?", status: "ready", closable: true },
+      };
+      const api: typeof defaultApi = {
+        ...defaultApi,
+        abort: () => Promise.resolve({ aborted: true }),
+        messages: () => new Promise<MessagePage>(() => undefined),
+        status: () => new Promise<SessionStatus>(() => undefined),
+      };
+      const controller = new SessionController(
+        () => state,
+        (patch) => { state = { ...state, ...patch }; },
+        () => undefined,
+        undefined,
+        { api, socket: new FakeSocket() },
+      );
+
+      const stop = controller.stopActiveWork();
+      await vi.advanceTimersByTimeAsync(2500);
+      await stop;
+
+      expect(state.extensionOverlay).toBeUndefined();
+      expect(state.activity).toBeUndefined();
+      expect(state.sessionActivities[oldSession.id]).toBeUndefined();
+      expect(state.status).toMatchObject({ isStreaming: false, isBashRunning: false, isCompacting: false, pendingMessageCount: 0, queuedMessages: [] });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the sending state scoped to the originating session when the user switches away", async () => {

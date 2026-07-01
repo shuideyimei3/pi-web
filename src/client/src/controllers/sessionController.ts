@@ -14,6 +14,7 @@ import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchiv
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 
 const MESSAGE_PAGE_SIZE = 100;
+const STOP_ACTIVE_WORK_ABORT_TIMEOUT_MS = 2500;
 
 export interface SessionEventSocket {
   connect(session: SessionRef, onEvent: (event: SessionUiEvent) => void, onReconnect?: () => void, machineId?: string): void;
@@ -535,11 +536,40 @@ export class SessionController {
   async stopActiveWork() {
     const session = this.getState().selectedSession;
     if (!session) return;
+    const sessionId = session.id;
+    const machineId = selectedMachineId(this.getState());
+    this.setState({ extensionOverlay: undefined });
     try {
-      await this.api.abort(session, selectedMachineId(this.getState()));
+      await this.abortOrStop(session, machineId);
+      this.applyLocalStoppedState(sessionId);
+      await withTimeout(this.refreshSelectedSession(sessionId), STOP_ACTIVE_WORK_ABORT_TIMEOUT_MS, () => Promise.resolve());
     } catch (error) {
       this.setState({ error: String(error) });
     }
+  }
+
+  private async abortOrStop(session: SessionInfo, machineId: string): Promise<void> {
+    const stop = async () => {
+      await this.api.stop(session, machineId);
+    };
+    try {
+      await withTimeout(this.api.abort(session, machineId), STOP_ACTIVE_WORK_ABORT_TIMEOUT_MS, stop);
+    } catch {
+      await stop();
+    }
+  }
+
+  private applyLocalStoppedState(sessionId: string): void {
+    const state = this.getState();
+    const status = state.status?.sessionId === sessionId
+      ? { ...state.status, isStreaming: false, isCompacting: false, isBashRunning: false, pendingMessageCount: 0, queuedMessages: [] }
+      : state.status;
+    this.setState({
+      ...(status === state.status ? {} : { status }),
+      activity: state.selectedSession?.id === sessionId ? undefined : state.activity,
+      sessionActivities: omitKey(state.sessionActivities, sessionId),
+      extensionOverlay: undefined,
+    });
   }
 
   async refreshSelectedSession(sessionId = this.getState().selectedSession?.id): Promise<void> {
@@ -779,6 +809,20 @@ function omitSessionActivity(activities: Record<string, SessionActivity>, sessio
 
 function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   return Object.fromEntries(Object.entries(record).filter(([id]) => id !== key));
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => Promise<void>): Promise<T | undefined> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<undefined>((resolve, reject) => {
+    timeout = setTimeout(() => {
+      void onTimeout().then(() => { resolve(undefined); }, reject);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
 }
 
 function uniqueSessionsById(sessions: readonly SessionInfo[]): SessionInfo[] {
