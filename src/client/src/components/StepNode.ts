@@ -207,22 +207,50 @@ function latestTool(step: StepData): ToolAggregation | undefined {
 
 function runningToolLabel(agg: ToolAggregation): string {
   const name = aggregationToolName(agg);
-  if (name === "load_skill") return "Loading skill";
-  if (name === "read") return "Reading files";
-  if (name === "edit" || name === "write" || name === "apply_patch") return "Editing files";
-  if (name === "grep" || name === "rg" || name === "glob") return "Searching codebase";
-  if (name === "web_search" || name === "fetch_content" || name === "search_query") return "Searching sources";
-  if (isUserInputToolName(name) || isUserInputRequestArgs(toolArgs(agg))) return "Waiting for input";
+  const args = toolArgs(agg);
+  const detail = runningToolDetail(agg);
+
+  if (name === "load_skill") return detail === "" ? "Loading skill" : `Loading ${detail}`;
+  if (name === "read") return detail === "" ? "Reading files" : `Reading ${detail}`;
+  if (name === "edit" || name === "write" || name === "apply_patch") {
+    return detail === "" ? "Editing files" : `Editing ${detail}`;
+  }
+  if (name === "grep" || name === "rg" || name === "glob") return detail === "" ? "Searching codebase" : `Searching ${detail}`;
+  if (name === "web_search" || name === "fetch_content" || name === "search_query") return detail === "" ? "Searching sources" : `Searching ${detail}`;
+  if (isUserInputToolName(name) || isUserInputRequestArgs(args)) return "Waiting for input";
   if (name === "bash") {
-    const command = stringArg(toolArgs(agg), "command");
+    const command = stringArg(args, "command");
     if (command !== undefined && isTestCommand(command)) return "Running tests";
     if (command !== undefined && isBuildCommand(command)) return "Running build";
-    return "Running command";
+    return detail === "" ? "Running command" : `Running ${detail}`;
   }
-  if (name === "browser" || name === "screenshot" || name === "open") return "Inspecting browser";
-  if (name === "subagent") return "Reviewing task";
-  const detail = toolCallDetail(name, toolArgs(agg), agg.execution?.summary ?? agg.toolCall?.summary);
-  return detail === "" ? `Running ${name}` : `Running ${name}`;
+  if (name === "browser" || name === "screenshot" || name === "open") return detail === "" ? "Inspecting browser" : `Inspecting ${detail}`;
+  if (name === "subagent") return detail === "" ? "Reviewing task" : `Reviewing ${detail}`;
+  return detail === "" ? `Running ${name}` : `Running ${name} · ${detail}`;
+}
+
+function runningToolDetail(agg: ToolAggregation): string {
+  const args = toolArgs(agg);
+  if (args === undefined) return "";
+
+  const command = stringArg(args, "command");
+  if (command !== undefined) return command;
+
+  const path = stringArg(args, "path");
+  if (path !== undefined) return path;
+
+  const query = stringArg(args, "query");
+  if (query !== undefined) return query;
+
+  const url = stringArg(args, "url");
+  if (url !== undefined) return url;
+
+  const summary = agg.execution?.summary ?? agg.toolCall?.summary;
+  if (summary !== undefined && summary !== "") return summary;
+
+  const entries = Object.entries(args).filter(([, value]) => value !== undefined && value !== null && value !== "");
+  if (entries.length === 0) return "";
+  return entries.map(([key, value]) => `${key}: ${inlineValue(value)}`).join(" · ");
 }
 
 function toolArgs(agg: ToolAggregation): Record<string, unknown> | undefined {
@@ -238,26 +266,6 @@ function aggregationToolName(agg: ToolAggregation): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function toolCallDetail(toolName: string, args: Record<string, unknown> | undefined, summary: string | undefined): string {
-  if (args !== undefined) {
-    const command = stringArg(args, "command");
-    if (command !== undefined) return command;
-
-    const path = stringArg(args, "path");
-    if (path !== undefined) return path;
-
-    const query = stringArg(args, "query");
-    if (query !== undefined) return query;
-
-    const url = stringArg(args, "url");
-    if (url !== undefined) return url;
-
-    const entries = Object.entries(args).filter(([, value]) => value !== undefined && value !== null);
-    if (entries.length > 0) return entries.map(([key, value]) => `${key}: ${inlineValue(value)}`).join(" ");
-  }
-  return summary ?? "";
 }
 
 function stringArg(args: Record<string, unknown> | undefined, key: string): string | undefined {
