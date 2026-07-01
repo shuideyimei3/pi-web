@@ -8,13 +8,13 @@
 Language: [中文](README.md) | English
 
 <p align="center">
-  <img src="display_video/pi-web-demo.png" alt="PI WEB interface screenshot" width="100%" />
+  <a href="display_video/pi-web-demo.mp4">
+    <img src="display_video/pi-web-demo.gif" alt="PI WEB animated demo" width="100%" />
+  </a>
 </p>
 
-<video controls muted playsinline width="100%" src="display_video/pi-web-demo.mp4"></video>
-
 <p align="center">
-  <a href="display_video/pi-web-demo.mp4">▶ Watch the demo recording if it does not play inline</a>
+  <a href="display_video/pi-web-demo.mp4">▶ Watch the MP4 demo recording</a>
 </p>
 
 PI WEB is a web UI for [Pi Coding Agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent). It runs, manages, and resumes persistent Pi Coding Agent sessions in real workspaces. Your browser is the control surface while sessions, terminals, repositories, and build caches stay on your machine, workstation, or server.
@@ -74,7 +74,7 @@ Product roadmap, commercial support, or hosted-service capabilities not confirme
 ├── .changeset/                 # Changesets release-note fragments
 ├── .github/workflows/          # CI and publishing workflows
 ├── .githooks/                  # Local git hooks
-├── display_video/              # Demo screenshot and recording referenced at the top of the READMEs
+├── display_video/              # Demo screenshot, GIF, and recording referenced at the top of the READMEs
 ├── docs/                       # Static website and user-facing docs; docs/assets stores image assets
 ├── extensions/                 # Pi Coding Agent extension entry point
 ├── pi-web-plugins/             # Bundled PI WEB plugin sources and tests
@@ -293,7 +293,7 @@ Full reference: [`docs/config.md`](docs/config.md) or <https://pi-web.dev/config
 - This update:
   - Reviewed the project structure, key entry points, configuration, plugin boundaries, and documentation boundaries.
   - Removed the root macOS temporary file `.DS_Store`.
-  - Added the demo screenshot and recording from `display_video/` to the top of the READMEs.
+  - Added the demo screenshot, GIF, and recording from `display_video/` to the top of the READMEs.
   - Prepared both the Chinese README and this English `README.en.md`.
   - Expanded the README content with project overview, features, directory structure, installation, usage, technology stack, configuration notes, cautions, and copyright information.
   - Marked unconfirmed information as “to be added”.

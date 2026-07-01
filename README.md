@@ -8,13 +8,13 @@
 语言：中文 | [English](README.en.md)
 
 <p align="center">
-  <img src="display_video/pi-web-demo.png" alt="PI WEB 界面截图" width="100%" />
+  <a href="display_video/pi-web-demo.mp4">
+    <img src="display_video/pi-web-demo.gif" alt="PI WEB 演示动图" width="100%" />
+  </a>
 </p>
 
-<video controls muted playsinline width="100%" src="display_video/pi-web-demo.mp4"></video>
-
 <p align="center">
-  <a href="display_video/pi-web-demo.mp4">▶ 无法直接播放时，点击查看演示录屏</a>
+  <a href="display_video/pi-web-demo.mp4">▶ 点击查看 MP4 演示录屏</a>
 </p>
 
 PI WEB 是 [Pi Coding Agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) 的 Web UI，用于在真实工作区中运行、管理和恢复持久化的 Pi Coding Agent 会话。它让浏览器成为控制界面，而会话、终端、仓库和构建缓存留在本机、工作站或服务器上持续运行。
@@ -74,7 +74,7 @@ Session     在某个 workspace 中运行的 Pi Coding Agent 聊天会话
 ├── .changeset/                 # Changesets 变更记录片段
 ├── .github/workflows/          # CI 与发布工作流
 ├── .githooks/                  # 本地 git hooks
-├── display_video/              # README 顶部引用的演示截图与录屏
+├── display_video/              # README 顶部引用的演示截图、GIF 与录屏
 ├── docs/                       # 静态网站与发布给用户的文档；docs/assets 存放图片资源
 ├── extensions/                 # Pi Coding Agent 扩展入口
 ├── pi-web-plugins/             # 内置 PI WEB 插件源码与测试
@@ -293,7 +293,7 @@ $PI_WEB_DATA_DIR
 - 本次修改内容：
   - 检查项目结构、关键入口、配置、插件与文档边界。
   - 清理根目录 macOS 临时文件 `.DS_Store`。
-  - 将 `display_video/` 中的演示截图和录屏放到 README 开头。
+  - 将 `display_video/` 中的演示截图、GIF 和录屏放到 README 开头。
   - 准备中文 README 与英文 `README.en.md`。
   - 补全 README 的项目简介、功能、目录结构、安装运行、使用方法、技术栈、配置说明、注意事项和版权信息。
   - 明确记录未能确认的信息为“待补充”。
